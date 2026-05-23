@@ -1,13 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2737431392948660"
+     crossorigin="anonymous"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="screen-orientation" content="landscape">
-<meta name="google-adsense-account" content="ca-pub-2737431392948660">
-<title> World Cup Chaos </title>
+
+<title>⚽ World Cup Chaos</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@700;900&display=swap');
 
@@ -694,19 +696,19 @@
     <!-- HOST PANEL -->
     <div class="tab-panel active" id="panelHost">
       <div style="margin-bottom:8px;color:#aaa;font-size:0.8rem">Share this code with your opponent:</div>
-      <div class="room-code-display" id="roomCodeDisplay" title="Click to copy">----</div>
+      <div class="room-code-display" id="roomCodeDisplay" title="Click to copy">····</div>
       <div class="code-hint">📋 Click code to copy &nbsp;|&nbsp; Code expires when you leave</div>
       <div class="player-slots">
         <div class="player-slot filled" id="slotHost">
           <span class="player-slot-label">👑 YOU (HOST)</span>
-          <span id="hostTeamLabel">Waiting for team…</span>
+          <span id="hostTeamLabel">Pick a team below</span>
         </div>
         <div class="player-slot" id="slotGuest">
           <span class="player-slot-label">👤 OPPONENT</span>
           <span id="guestStatusLabel">Waiting to join…</span>
         </div>
       </div>
-      <div class="online-status waiting" id="hostStatus">⏳ Waiting for opponent to join…</div>
+      <div class="online-status waiting" id="hostStatus">⏳ Opening connection…</div>
       <div class="btn-row" style="margin-top:14px">
         <button class="btn btn-primary" id="btnStartOnline" disabled style="opacity:0.4">⚽ START MATCH</button>
         <button class="btn btn-secondary btn-sm" onclick="closeOnlineModal()">✕ CANCEL</button>
@@ -1952,384 +1954,358 @@ requestAnimationFrame(()=>{
 })();
 
 /* ══════════════════════════════════════════════════════════
-   ONLINE MULTIPLAYER SYSTEM
-   Uses BroadcastChannel API for same-browser multiplayer
-   (works across tabs/windows on the same device/browser)
-   With a room-code system to pair players.
+   ONLINE MULTIPLAYER — PeerJS WebRTC (truly cross-device)
+   Host gets a 4-letter room code backed by their PeerJS ID.
+   Guest connects directly peer-to-peer via WebRTC.
+   No server needed beyond the free PeerJS signalling server.
 ══════════════════════════════════════════════════════════ */
 (function() {
 
-  /* ── State ── */
-  let onlineRole = null;       // 'host' | 'guest'
-  let roomCode   = null;
-  let channel    = null;       // BroadcastChannel
-  let lobbyChannel = null;     // for room discovery
-  let guestConnected = false;
-  let onlineActive   = false;
-  let myTeamKey      = null;
-  let opponentTeamKey = null;
-  let currentTab     = 'host';
+  /* ── PeerJS loaded lazily ── */
+  let peerLib = null;
+  function loadPeer(cb) {
+    if (window.Peer) { cb(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js';
+    s.onload  = cb;
+    s.onerror = () => setAnyStatus('❌ Could not load network library. Check your connection.', 'error');
+    document.head.appendChild(s);
+  }
 
-  /* ── Generate random 4-letter room code ── */
+  /* ── State ── */
+  let peer         = null;   // our Peer instance
+  let conn         = null;   // active DataConnection
+  let onlineRole   = null;   // 'host' | 'guest'
+  let roomCode     = null;   // 4-letter display code
+  let peerId       = null;   // full PeerJS id (= 'wcm-' + roomCode)
+  let onlineActive = false;
+  let guestConnected = false;
+
+  /* ── Helpers ── */
   function genCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let c = '';
     for (let i = 0; i < 4; i++) c += chars[Math.floor(Math.random() * chars.length)];
     return c;
   }
+  function setAnyStatus(msg, cls) {
+    ['hostStatus','joinStatus'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.textContent = msg; el.className = 'online-status ' + (cls||''); }
+    });
+  }
+  function setStatus(id, msg, cls) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = msg; el.className = 'online-status ' + (cls||''); }
+  }
+  function destroyPeer() {
+    if (conn)  { try { conn.close();  } catch(e){} conn  = null; }
+    if (peer)  { try { peer.destroy(); } catch(e){} peer  = null; }
+    onlineActive = false; onlineRole = null; guestConnected = false;
+  }
 
-  /* ── Open modal & generate code ── */
+  /* ════════════════ MODAL UI ════════════════ */
   window.openOnlineModal = function() {
-    // Auto-generate a code for host tab
-    roomCode = genCode();
-    document.getElementById('roomCodeDisplay').textContent = roomCode;
     document.getElementById('onlineModal').classList.add('show');
-    document.getElementById('hostStatus').textContent = '⏳ Waiting for opponent to join…';
-    document.getElementById('hostStatus').className = 'online-status waiting';
+    // Reset host panel
+    document.getElementById('roomCodeDisplay').textContent = '····';
+    setStatus('hostStatus', '⏳ Click "HOST GAME" to generate a code', 'waiting');
     document.getElementById('btnStartOnline').disabled = true;
     document.getElementById('btnStartOnline').style.opacity = '0.4';
     document.getElementById('slotGuest').classList.remove('filled');
     document.getElementById('guestStatusLabel').textContent = 'Waiting to join…';
-
-    // Open lobby listener channel for this code
-    openLobbyChannel(roomCode);
+    setStatus('joinStatus', '', '');
+    switchTab('host');
   };
 
   window.closeOnlineModal = function() {
     document.getElementById('onlineModal').classList.remove('show');
-    if (lobbyChannel) { lobbyChannel.close(); lobbyChannel = null; }
-    if (channel) { channel.close(); channel = null; }
-    guestConnected = false;
-    onlineRole = null;
-    onlineActive = false;
+    destroyPeer();
   };
 
   window.switchTab = function(tab) {
-    currentTab = tab;
-    document.getElementById('tabHost').classList.toggle('active', tab === 'host');
-    document.getElementById('tabJoin').classList.toggle('active', tab === 'join');
-    document.getElementById('panelHost').classList.toggle('active', tab === 'host');
-    document.getElementById('panelJoin').classList.toggle('active', tab === 'join');
-    // Reset join status
-    if (tab === 'join') {
-      document.getElementById('joinStatus').textContent = '';
-      document.getElementById('joinStatus').className = 'online-status';
-    }
+    document.getElementById('tabHost').classList.toggle('active', tab==='host');
+    document.getElementById('tabJoin').classList.toggle('active', tab==='join');
+    document.getElementById('panelHost').classList.toggle('active', tab==='host');
+    document.getElementById('panelJoin').classList.toggle('active', tab==='join');
   };
 
-  /* ── Copy room code ── */
+  /* ── Copy code ── */
   document.getElementById('roomCodeDisplay').addEventListener('click', () => {
     const code = document.getElementById('roomCodeDisplay').textContent;
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(code).then(() => {
-        const el = document.getElementById('roomCodeDisplay');
-        el.textContent = '✓ COPIED!';
-        setTimeout(() => el.textContent = code, 1500);
-      });
-    }
-  });
-
-  /* ── Input uppercase ── */
-  document.getElementById('joinCodeInput').addEventListener('input', e => {
-    e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g,'');
-  });
-
-  /* ── Lobby channel: host opens, guest sends join request ── */
-  function openLobbyChannel(code) {
-    if (lobbyChannel) lobbyChannel.close();
-    lobbyChannel = new BroadcastChannel('wcmania_lobby_' + code);
-    onlineRole = 'host';
-
-    lobbyChannel.onmessage = (ev) => {
-      const msg = ev.data;
-      if (msg.type === 'guest_hello') {
-        // Guest wants to join
-        guestConnected = true;
-        opponentTeamKey = msg.team || null;
-
-        document.getElementById('slotGuest').classList.add('filled');
-        document.getElementById('guestStatusLabel').textContent = msg.team
-          ? `${TEAMS[msg.team]?.flag || '🏳️'} ${TEAMS[msg.team]?.name || msg.team}`
-          : 'Connected!';
-        document.getElementById('hostStatus').textContent = '✅ Opponent connected! Select your teams and start!';
-        document.getElementById('hostStatus').className = 'online-status connected';
-
-        // Enable start button if host also has a team
-        updateStartButton();
-
-        // Ack the guest
-        lobbyChannel.postMessage({ type: 'host_ack', hostTeam: myTeamKey });
-      }
-      if (msg.type === 'guest_team') {
-        opponentTeamKey = msg.team;
-        document.getElementById('guestStatusLabel').textContent =
-          `${TEAMS[msg.team]?.flag || ''} ${TEAMS[msg.team]?.name || msg.team}`;
-        updateStartButton();
-      }
-    };
-  }
-
-  function updateStartButton() {
-    const ready = guestConnected;
-    document.getElementById('btnStartOnline').disabled = !ready;
-    document.getElementById('btnStartOnline').style.opacity = ready ? '1' : '0.4';
-  }
-
-  /* ── Join a room ── */
-  window.joinRoom = function() {
-    const code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
-    if (code.length !== 4) {
-      setJoinStatus('⚠️ Enter a 4-letter code!', 'error');
-      return;
-    }
-    setJoinStatus('🔍 Looking for host…', 'waiting');
-
-    // Try joining via lobby channel
-    const lc = new BroadcastChannel('wcmania_lobby_' + code);
-    lobbyChannel = lc;
-    roomCode = code;
-    onlineRole = 'guest';
-
-    let ackReceived = false;
-    lc.onmessage = (ev) => {
-      const msg = ev.data;
-      if (msg.type === 'host_ack') {
-        ackReceived = true;
-        opponentTeamKey = msg.hostTeam || null;
-        setJoinStatus('✅ Host found! Waiting for match to start…', 'connected');
-        document.getElementById('btnJoinRoom').disabled = true;
-        document.getElementById('btnJoinRoom').style.opacity = '0.4';
-      }
-      if (msg.type === 'match_start') {
-        // Host started the match
-        opponentTeamKey = msg.p1Team;
-        myTeamKey = msg.p2Team;
-        // Set teams and start online game as guest
-        p1Team = msg.p1Team;
-        p2Team = msg.p2Team;
-        closeOnlineModalSilent();
-        openGameChannel(code);
-        startGame('online_guest');
-      }
-    };
-
-    // Send hello
-    lc.postMessage({ type: 'guest_hello', team: myTeamKey });
-
-    // Timeout if no ack
-    setTimeout(() => {
-      if (!ackReceived) {
-        setJoinStatus('❌ No host found with code "' + code + '". Check the code and try again.', 'error');
-        lc.close(); lobbyChannel = null; onlineRole = null;
-        document.getElementById('btnJoinRoom').disabled = false;
-        document.getElementById('btnJoinRoom').style.opacity = '1';
-      }
-    }, 4000);
-  };
-
-  function setJoinStatus(msg, cls) {
-    const el = document.getElementById('joinStatus');
-    el.textContent = msg;
-    el.className = 'online-status ' + (cls || '');
-  }
-
-  /* ── Hook team selection to broadcast to lobby (for online) ── */
-  document.querySelectorAll('.team-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const team = card.dataset.team;
-      // Track selection for online mode
-      if (onlineRole === 'host') {
-        if (selStep === 0 || selStep === 1) myTeamKey = team;
-        if (lobbyChannel && guestConnected) {
-          lobbyChannel.postMessage({ type: 'host_team', team: myTeamKey });
-        }
-        updateStartButton();
-      } else if (onlineRole === 'guest') {
-        myTeamKey = team;
-        if (lobbyChannel) {
-          lobbyChannel.postMessage({ type: 'guest_team', team: myTeamKey });
-        }
-      }
+    if (code === '····' || code.includes('…') || code.includes('✓')) return;
+    navigator.clipboard?.writeText(code).then(() => {
+      const el = document.getElementById('roomCodeDisplay');
+      const prev = el.textContent;
+      el.textContent = '✓ COPIED!';
+      setTimeout(() => el.textContent = prev, 1500);
     });
   });
 
-  /* ── Start online game as host ── */
+  /* ── Uppercase input ── */
+  document.getElementById('joinCodeInput').addEventListener('input', e => {
+    e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  });
+
+  /* ════════════════ HOST FLOW ════════════════ */
+  document.getElementById('btnHostGame') && (() => {})(); // pre-wire check
+
+  // We hijack the "HOST GAME" tab click to also init the peer
+  document.getElementById('tabHost').addEventListener('click', () => {
+    // Only init if switching to host and we don't have a peer yet
+    if (peer || onlineRole === 'host') return;
+    initHostPeer();
+  });
+
+  // Also init when modal first opens on host tab
+  document.getElementById('btnOnline').addEventListener('click', () => {
+    openOnlineModal();
+    setTimeout(initHostPeer, 100);
+  });
+
+  function initHostPeer() {
+    if (peer) return;
+    onlineRole = 'host';
+    roomCode = genCode();
+    peerId = 'wcm-' + roomCode;
+
+    setStatus('hostStatus', '🔌 Connecting to network…', 'waiting');
+    document.getElementById('roomCodeDisplay').textContent = '····';
+
+    loadPeer(() => {
+      // Retry with different code if ID taken
+      tryCreatePeer(peerId, 0);
+    });
+  }
+
+  function tryCreatePeer(id, attempt) {
+    if (attempt > 5) {
+      setStatus('hostStatus', '❌ Network error. Try again.', 'error');
+      return;
+    }
+    const p = new Peer(id, { debug: 0 });
+    peer = p;
+
+    p.on('open', pid => {
+      // Extract code from peer id
+      roomCode = pid.replace('wcm-','');
+      document.getElementById('roomCodeDisplay').textContent = roomCode;
+      setStatus('hostStatus', '⏳ Waiting for opponent… share the code above!', 'waiting');
+    });
+
+    p.on('error', err => {
+      if (err.type === 'unavailable-id') {
+        // Code taken, generate new one
+        p.destroy(); peer = null;
+        roomCode = genCode();
+        setTimeout(() => tryCreatePeer('wcm-' + roomCode, attempt + 1), 300);
+      } else {
+        setStatus('hostStatus', '❌ Error: ' + err.message, 'error');
+      }
+    });
+
+    p.on('connection', incoming => {
+      conn = incoming;
+      setupConn('host');
+    });
+  }
+
+  /* ════════════════ GUEST FLOW ════════════════ */
+  window.joinRoom = function() {
+    const code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
+    if (code.length < 4) { setStatus('joinStatus','⚠️ Enter the 4-character code','error'); return; }
+
+    setStatus('joinStatus', '🔌 Connecting…', 'waiting');
+    document.getElementById('btnJoinRoom').disabled = true;
+    document.getElementById('btnJoinRoom').style.opacity = '0.4';
+
+    loadPeer(() => {
+      if (peer) { peer.destroy(); }
+      peer = new Peer({ debug: 0 });
+      onlineRole = 'guest';
+
+      peer.on('open', () => {
+        setStatus('joinStatus', '🔍 Finding host…', 'waiting');
+        const hostId = 'wcm-' + code;
+        conn = peer.connect(hostId, { reliable: true, serialization: 'json' });
+        setupConn('guest');
+
+        // Timeout
+        setTimeout(() => {
+          if (!guestConnected) {
+            setStatus('joinStatus', '❌ Host not found. Check the code!', 'error');
+            document.getElementById('btnJoinRoom').disabled = false;
+            document.getElementById('btnJoinRoom').style.opacity = '1';
+            conn?.close(); conn = null;
+          }
+        }, 8000);
+      });
+
+      peer.on('error', err => {
+        setStatus('joinStatus', '❌ ' + (err.message || 'Connection failed'), 'error');
+        document.getElementById('btnJoinRoom').disabled = false;
+        document.getElementById('btnJoinRoom').style.opacity = '1';
+      });
+    });
+  };
+
+  /* ════════════════ SHARED CONNECTION SETUP ════════════════ */
+  function setupConn(role) {
+    conn.on('open', () => {
+      guestConnected = true;
+
+      if (role === 'host') {
+        document.getElementById('slotGuest').classList.add('filled');
+        document.getElementById('guestStatusLabel').textContent = 'Connected! ✅';
+        setStatus('hostStatus', '✅ Opponent connected! Pick teams & start!', 'connected');
+        document.getElementById('btnStartOnline').disabled = false;
+        document.getElementById('btnStartOnline').style.opacity = '1';
+        // Send host greeting
+        send({ type: 'hello', role: 'host' });
+      } else {
+        setStatus('joinStatus', '✅ Connected! Waiting for host to start…', 'connected');
+        send({ type: 'hello', role: 'guest' });
+      }
+    });
+
+    conn.on('data', onData);
+
+    conn.on('close', () => {
+      if (gameRunning) { showCommentary('⚠️ Opponent disconnected!'); }
+      guestConnected = false; onlineActive = false;
+    });
+
+    conn.on('error', err => {
+      setAnyStatus('❌ Connection error', 'error');
+    });
+  }
+
+  function send(msg) {
+    if (conn && conn.open) {
+      try { conn.send(msg); } catch(e) {}
+    }
+  }
+
+  /* ════════════════ MESSAGE HANDLER ════════════════ */
+  function onData(msg) {
+    if (!msg || !msg.type) return;
+
+    switch (msg.type) {
+      case 'hello':
+        // nothing extra needed
+        break;
+
+      case 'match_start':
+        // Guest receives match_start — launch game
+        p1Team = msg.p1Team;
+        p2Team = msg.p2Team;
+        document.getElementById('onlineModal').classList.remove('show');
+        onlineActive = true;
+        startGame('online_guest');
+        break;
+
+      case 'input':
+        // Host receives guest's button states → inject as P2 keys
+        if (onlineRole === 'host') {
+          keys['ArrowLeft']  = msg.L  || false;
+          keys['ArrowRight'] = msg.R  || false;
+          keys['ArrowUp']    = msg.U  || false;
+          keys['KeyK']       = msg.S  || false;
+          keys['KeyL']       = msg.P  || false;
+        }
+        break;
+
+      case 'state':
+        // Guest receives authoritative physics from host
+        if (onlineRole === 'guest' && gs && gameRunning) {
+          const s = msg;
+          gs.ball.x=s.bx; gs.ball.y=s.by; gs.ball.vx=s.bvx; gs.ball.vy=s.bvy;
+          gs.ball.rotAngle=s.br; gs.ball.spin=s.bs;
+          gs.p1.x=s.ax; gs.p1.y=s.ay; gs.p1.vx=s.avx; gs.p1.vy=s.avy; gs.p1.facing=s.af; gs.p1.frozen=s.afr;
+          gs.p2.x=s.bpx; gs.p2.y=s.bpy; gs.p2.vx=s.bpvx; gs.p2.vy=s.bpvy; gs.p2.facing=s.bpf; gs.p2.frozen=s.bpfr;
+          gs.score[0]=s.s0; gs.score[1]=s.s1; gs.timeLeft=s.t;
+          gs.powerCD1=s.c1; gs.powerCD2=s.c2;
+        }
+        break;
+
+      case 'goal':
+        if (onlineRole === 'guest' && gs) {
+          burst(gs, W/2, H/2,
+            msg.scorer===1
+              ? [TEAMS[p1Team].jerseyCol, TEAMS[p1Team].jerseyAlt, '#FFD700']
+              : [TEAMS[p2Team].jerseyCol, TEAMS[p2Team].jerseyAlt, '#FFD700'],
+            80);
+        }
+        break;
+
+      case 'game_over':
+        if (onlineRole === 'guest') endGame();
+        break;
+    }
+  }
+
+  /* ════════════════ START ONLINE MATCH (host) ════════════════ */
   document.getElementById('btnStartOnline').addEventListener('click', () => {
     if (!guestConnected) return;
-    // Host picks p1, guest picks p2
-    // If teams aren't fully set yet, auto-assign
-    if (!p1Team) p1Team = myTeamKey || 'argentina';
-    if (!p2Team) p2Team = opponentTeamKey || 'brazil';
-
-    // Notify guest
-    if (lobbyChannel) {
-      lobbyChannel.postMessage({
-        type: 'match_start',
-        p1Team: p1Team,
-        p2Team: p2Team,
-      });
-    }
-    closeOnlineModalSilent();
-    openGameChannel(roomCode);
+    if (!p1Team) p1Team = 'argentina';
+    if (!p2Team) p2Team = 'brazil';
+    // Tell guest to start
+    send({ type: 'match_start', p1Team, p2Team });
+    document.getElementById('onlineModal').classList.remove('show');
+    onlineActive = true;
     startGame('online_host');
   });
 
-  /* ── Open game channel for input sync ── */
-  function openGameChannel(code) {
-    if (channel) channel.close();
-    channel = new BroadcastChannel('wcmania_game_' + code);
-    onlineActive = true;
-    setupGameChannelListener();
-  }
-
-  /* ── Game channel: sync remote player inputs ── */
-  // We replicate the remote player's keys into the keys{} object
-  const remoteKeys = {};
-
-  function setupGameChannelListener() {
-    if (!channel) return;
-    channel.onmessage = (ev) => {
-      const msg = ev.data;
-      if (msg.type === 'input') {
-        // Apply remote keys — mapped to local slots
-        const isHost = onlineRole === 'host';
-        // Host controls p1 (WASD), guest controls p2 (arrows)
-        // Remap guest's p1 keys → p2 keys for host's game
-        if (isHost) {
-          // guest sends their local p1 keys → we treat as p2
-          keys['ArrowLeft']  = msg.keys['KeyA']  || false;
-          keys['ArrowRight'] = msg.keys['KeyD']  || false;
-          keys['ArrowUp']    = msg.keys['KeyW']  || false;
-          keys['ArrowDown']  = msg.keys['KeyS']  || false;
-          keys['KeyK']       = msg.keys['KeyF']  || false;
-          keys['KeyL']       = msg.keys['KeyG']  || false;
-        } else {
-          // host sends their p1 keys → we treat as p1 (mirror)
-          keys['KeyA'] = msg.keys['KeyA']  || false;
-          keys['KeyD'] = msg.keys['KeyD']  || false;
-          keys['KeyW'] = msg.keys['KeyW']  || false;
-          keys['KeyS'] = msg.keys['KeyS']  || false;
-          keys['KeyF'] = msg.keys['KeyF']  || false;
-          keys['KeyG'] = msg.keys['KeyG']  || false;
-        }
-      }
-      if (msg.type === 'state_sync' && onlineRole === 'guest') {
-        // Guest: receive authoritative game state from host
-        if (!gs || !gameRunning) return;
-        // Sync ball & players from host
-        const s = msg.state;
-        gs.ball.x = s.bx; gs.ball.y = s.by;
-        gs.ball.vx = s.bvx; gs.ball.vy = s.bvy;
-        gs.ball.rotAngle = s.brot; gs.ball.spin = s.bspin;
-        gs.p1.x = s.p1x; gs.p1.y = s.p1y; gs.p1.vx = s.p1vx; gs.p1.vy = s.p1vy;
-        gs.p2.x = s.p2x; gs.p2.y = s.p2y; gs.p2.vx = s.p2vx; gs.p2.vy = s.p2vy;
-        gs.score[0] = s.sc0; gs.score[1] = s.sc1;
-        gs.timeLeft = s.t;
-        gs.powerCD1 = s.pcd1; gs.powerCD2 = s.pcd2;
-        gs.p1.frozen = s.p1fr; gs.p2.frozen = s.p2fr;
-        gs.p1.facing = s.p1f; gs.p2.facing = s.p2f;
-      }
-      if (msg.type === 'game_over' && onlineRole === 'guest') {
-        endGame();
-      }
-      if (msg.type === 'goal' && onlineRole === 'guest') {
-        // Guest sees goal effects
-        if (gs) burst(gs, W/2, H/2,
-          msg.scorer === 1
-            ? [TEAMS[p1Team].jerseyCol, TEAMS[p1Team].jerseyAlt, '#FFD700']
-            : [TEAMS[p2Team].jerseyCol, TEAMS[p2Team].jerseyAlt, '#FFD700'],
-          80);
-      }
-    };
-  }
-
-  /* ── Broadcast local input to remote (runs in game loop) ── */
-  let lastInputSend = 0;
-  const INPUT_INTERVAL = 1000 / 30; // 30hz
-
+  /* ════════════════ GAME TICK — send inputs + state ════════════════ */
+  let lastSend = 0;
   window._onlineTick = function(ts) {
-    if (!onlineActive || !channel) return;
+    if (!onlineActive || !conn || !conn.open) return;
+    if (ts - lastSend < 33) return; // ~30hz cap
+    lastSend = ts;
 
-    // Send input at 30hz
-    if (ts - lastInputSend > INPUT_INTERVAL) {
-      lastInputSend = ts;
-      // Always send p1 keys (both host and guest use p1 controls locally)
-      channel.postMessage({
+    if (onlineRole === 'guest') {
+      // Guest sends their button state (mapped to P2 arrow keys on host)
+      send({
         type: 'input',
-        keys: {
-          KeyA: keys['KeyA'] || false,
-          KeyD: keys['KeyD'] || false,
-          KeyW: keys['KeyW'] || false,
-          KeyS: keys['KeyS'] || false,
-          KeyF: keys['KeyF'] || false,
-          KeyG: keys['KeyG'] || false,
-        }
+        L: keys['ArrowLeft']  || false,
+        R: keys['ArrowRight'] || false,
+        U: keys['ArrowUp']    || false,
+        S: keys['KeyK']       || false,
+        P: keys['KeyL']       || false,
       });
-    }
-
-    // Host sends authoritative state at 60hz
-    if (onlineRole === 'host' && gs && gameRunning) {
-      channel.postMessage({
-        type: 'state_sync',
-        state: {
-          bx: gs.ball.x,   by: gs.ball.y,
-          bvx: gs.ball.vx, bvy: gs.ball.vy,
-          brot: gs.ball.rotAngle, bspin: gs.ball.spin,
-          p1x: gs.p1.x, p1y: gs.p1.y, p1vx: gs.p1.vx, p1vy: gs.p1.vy,
-          p2x: gs.p2.x, p2y: gs.p2.y, p2vx: gs.p2.vx, p2vy: gs.p2.vy,
-          sc0: gs.score[0], sc1: gs.score[1], t: gs.timeLeft,
-          pcd1: gs.powerCD1, pcd2: gs.powerCD2,
-          p1fr: gs.p1.frozen, p2fr: gs.p2.frozen,
-          p1f: gs.p1.facing, p2f: gs.p2.facing,
-        }
+    } else if (onlineRole === 'host' && gs && gameRunning) {
+      // Host sends authoritative state
+      send({
+        type: 'state',
+        bx:gs.ball.x,    by:gs.ball.y,   bvx:gs.ball.vx,  bvy:gs.ball.vy,
+        br:gs.ball.rotAngle, bs:gs.ball.spin,
+        ax:gs.p1.x,  ay:gs.p1.y,  avx:gs.p1.vx,  avy:gs.p1.vy,  af:gs.p1.facing,  afr:gs.p1.frozen,
+        bpx:gs.p2.x, bpy:gs.p2.y, bpvx:gs.p2.vx, bpvy:gs.p2.vy, bpf:gs.p2.facing, bpfr:gs.p2.frozen,
+        s0:gs.score[0], s1:gs.score[1], t:gs.timeLeft,
+        c1:gs.powerCD1, c2:gs.powerCD2,
       });
     }
   };
 
-  /* ── Notify guest of game events ── */
-  const _origRegisterGoal = window._registerGoalOnline = function(scorer) {
-    if (onlineRole === 'host' && channel) {
-      channel.postMessage({ type: 'goal', scorer });
-    }
+  /* ── Notify guest of goals ── */
+  window._notifyOnlineGoal = function(scorer) {
+    if (onlineRole === 'host') send({ type: 'goal', scorer });
   };
 
-  /* ── Hook endGame for online ── */
+  /* ── Notify guest of game over ── */
+  window._getOnlineChannel = () => ({ postMessage: m => send(m) });
+
+  /* ── Clean up on menu ── */
   const _origGoMenu = window.goMenu;
   window.goMenu = function() {
-    if (channel) { channel.close(); channel = null; }
-    if (lobbyChannel) { lobbyChannel.close(); lobbyChannel = null; }
-    onlineActive = false; onlineRole = null; guestConnected = false;
+    if (onlineRole === 'host' && conn) send({ type: 'game_over' });
+    destroyPeer();
     document.getElementById('onlineBadge').style.display = 'none';
     _origGoMenu?.();
   };
 
-  function closeOnlineModalSilent() {
-    document.getElementById('onlineModal').classList.remove('show');
-  }
-
-  /* ── Online mode: guest uses p1 controls for their character ── */
-  // We reassign: online_guest mode — guest plays as P2 visually but
-  // uses P1 keys (WASD) on their own screen, host syncs their input to P2 slot
-  window._isOnlineGuest = () => onlineRole === 'guest' && onlineActive;
-  window._isOnlineHost  = () => onlineRole === 'host'  && onlineActive;
-
-  /* ── Wire up the Online button ── */
-  document.getElementById('btnOnline').addEventListener('click', () => {
-    openOnlineModal();
-  });
-
-  /* ── Expose for gameLoop ── */
-  window._onlineRole = () => onlineRole;
+  window._onlineRole   = () => onlineRole;
   window._onlineActive = () => onlineActive;
-  window._notifyOnlineGoal = _origRegisterGoal;
-  window._getOnlineChannel = () => channel;
-
-  /* ── Hook online start for controls ── */
-  document.addEventListener('_onlineGameStart', () => {
-    setTimeout(() => {
-      if(window.showOnlineControls) window.showOnlineControls(gameMode);
-    }, 60);
-  });
 
 })();
 
