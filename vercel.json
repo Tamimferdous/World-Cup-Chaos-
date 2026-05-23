@@ -1,0 +1,6 @@
+{
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/.*", "dest": "WCMANIA_multiplayer (1).html" }
+  ]
+}
