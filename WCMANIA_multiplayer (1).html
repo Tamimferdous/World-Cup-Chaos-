@@ -1,0 +1,2337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="screen-orientation" content="landscape">
+<title>⚽ World Cup Chaos — Argentina vs Brazil & More</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@700;900&display=swap');
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --gold: #FFD700;
+    --orange: #FF6600;
+    --red: #FF2200;
+    --pink: #FF69B4;
+    --purple: #9B00FF;
+    --dark: #0d0820;
+    --darker: #07040f;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: var(--dark);
+    font-family: 'Nunito', Arial, sans-serif;
+  }
+
+  /* Allow menu screen to scroll on small phones */
+  #menuScreen {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    justify-content: flex-start !important;
+    padding: 16px 12px 24px;
+  }
+
+  canvas#gameCanvas {
+    display: block;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+  }
+
+  /* ── OVERLAY LAYER ── */
+  #overlay {
+    position: fixed; inset: 0;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  /* ── SCREENS ── */
+  .screen {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 20;
+    pointer-events: all;
+  }
+  .screen.hidden { display: none; }
+
+  /* ─── MENU ─── */
+  #menuScreen {
+    background: radial-gradient(ellipse at 30% 20%, #1a0050 0%, #0d0820 40%, #040210 100%);
+  }
+
+  .menu-stars {
+    position: absolute; inset: 0;
+    overflow: hidden; pointer-events: none;
+  }
+  .star {
+    position: absolute;
+    background: white;
+    border-radius: 50%;
+    animation: twinkle var(--d, 2s) var(--delay, 0s) infinite alternate;
+  }
+  @keyframes twinkle { from { opacity: 0.1; transform: scale(0.8); } to { opacity: 1; transform: scale(1.2); } }
+
+  .menu-title {
+    font-family: 'Bangers', cursive;
+    font-size: clamp(2.8rem, 7vw, 5.5rem);
+    color: var(--gold);
+    text-shadow:
+      0 0 30px #FF6600,
+      4px 4px 0 #CC0000,
+      8px 8px 0 #880000;
+    letter-spacing: 4px;
+    text-align: center;
+    animation: titleFloat 3s ease-in-out infinite;
+    line-height: 1.1;
+    margin-bottom: 4px;
+  }
+  @keyframes titleFloat {
+    0%,100% { transform: translateY(0) rotate(-1deg); }
+    50%      { transform: translateY(-10px) rotate(1deg); }
+  }
+
+  .menu-sub {
+    font-size: clamp(0.75rem, 1.8vw, 1.1rem);
+    color: var(--pink);
+    margin-bottom: 22px;
+    text-align: center;
+    letter-spacing: 1px;
+    animation: pulse 1.5s ease-in-out infinite alternate;
+  }
+  @keyframes pulse { from { opacity: 0.7; } to { opacity: 1; } }
+
+  /* Selection info */
+  .sel-info {
+    display: flex; gap: 20px;
+    margin-bottom: 12px;
+    flex-wrap: wrap; justify-content: center;
+  }
+  .sel-badge {
+    background: rgba(255,255,255,0.07);
+    border: 1.5px solid rgba(255,255,255,0.15);
+    border-radius: 30px;
+    padding: 5px 18px;
+    font-size: 0.85rem;
+    color: #ccc;
+    min-width: 150px;
+    text-align: center;
+  }
+  .sel-badge.selected { border-color: #00FF88; color: #00FF88; }
+  #selTitle {
+    font-family: 'Bangers', cursive;
+    font-size: 1.3rem;
+    color: var(--gold);
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+
+  /* Team Grid */
+  .team-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin: 0 auto 18px;
+    max-width: 640px;
+    width: 90vw;
+  }
+
+  .team-card {
+    background: rgba(255,255,255,0.05);
+    border: 2px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 14px 10px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(.34,1.56,.64,1);
+    user-select: none;
+    position: relative;
+    overflow: hidden;
+  }
+  .team-card::before {
+    content: '';
+    position: absolute; inset: 0;
+    opacity: 0;
+    transition: opacity 0.2s;
+    background: radial-gradient(circle at center, rgba(255,215,0,0.15), transparent 70%);
+  }
+  .team-card:hover { transform: scale(1.08) translateY(-3px); border-color: var(--gold); }
+  .team-card:hover::before { opacity: 1; }
+  .team-card.p1-selected { border-color: #00FF88; background: rgba(0,255,136,0.1); transform: scale(1.05); }
+  .team-card.p2-selected { border-color: #FF6699; background: rgba(255,102,153,0.1); transform: scale(1.05); }
+  .team-card.both-selected { border-color: var(--gold); }
+
+  .team-flag { font-size: 2.4rem; display: block; margin-bottom: 4px; }
+  .team-name {
+    font-family: 'Bangers', cursive;
+    font-size: 1.1rem; letter-spacing: 1px;
+    color: white; display: block;
+  }
+  .team-power {
+    font-size: 0.62rem; color: var(--gold);
+    margin-top: 3px; display: block;
+    line-height: 1.3;
+  }
+
+  /* Buttons */
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-bottom: 10px; }
+
+  .btn {
+    font-family: 'Bangers', cursive;
+    letter-spacing: 2px;
+    font-size: 1.1rem;
+    border: none; border-radius: 30px;
+    padding: 12px 30px;
+    cursor: pointer;
+    position: relative; overflow: hidden;
+    transition: transform 0.15s, box-shadow 0.15s;
+    text-transform: uppercase;
+  }
+  .btn::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: rgba(255,255,255,0.2);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .btn:hover { transform: scale(1.1) translateY(-2px); }
+  .btn:hover::after { opacity: 1; }
+  .btn:active { transform: scale(0.97); }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #FF6600, #CC0000);
+    color: white;
+    box-shadow: 0 4px 20px rgba(255,102,0,0.5);
+  }
+  .btn-primary:hover { box-shadow: 0 8px 30px rgba(255,102,0,0.7); }
+
+  .btn-secondary {
+    background: linear-gradient(135deg, #4400CC, #0033AA);
+    color: white;
+    box-shadow: 0 4px 15px rgba(68,0,204,0.4);
+  }
+
+  .btn-sm { font-size: 0.9rem; padding: 9px 20px; }
+
+  .controls-hint {
+    font-size: 0.68rem; color: rgba(255,255,255,0.35);
+    text-align: center; margin-top: 4px; line-height: 1.7;
+  }
+
+  /* ─── HUD ─── */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: 68px;
+    background: rgba(0,0,0,0.82);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 30;
+  }
+  #hud.visible { display: flex; }
+
+  .hud-team { text-align: center; min-width: 80px; }
+  .hud-team-flag { font-size: 1.6rem; }
+  .hud-team-name { font-family: 'Bangers', cursive; font-size: 0.85rem; letter-spacing: 1px; color: #aaa; }
+
+  .hud-center { text-align: center; flex: 1; }
+  .hud-score {
+    font-family: 'Bangers', cursive;
+    font-size: 2.8rem; color: var(--gold);
+    letter-spacing: 6px;
+    line-height: 1;
+    text-shadow: 0 0 15px rgba(255,215,0,0.5);
+  }
+  .hud-timer {
+    font-family: 'Bangers', cursive;
+    font-size: 1rem; color: #00FF88;
+    letter-spacing: 2px;
+  }
+
+  /* Power bars */
+  .power-bar-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .power-label { font-size: 0.55rem; color: rgba(255,255,255,0.5); letter-spacing: 1px; text-transform: uppercase; }
+  .power-bar-bg {
+    width: 90px; height: 6px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 3px; overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  .power-bar-fill {
+    height: 100%; border-radius: 3px;
+    transition: width 0.05s linear;
+    background: linear-gradient(90deg, #FF6600, #FFD700);
+  }
+  .power-bar-fill.ready { background: linear-gradient(90deg, #00FF88, #00CCFF); animation: glow 0.5s infinite alternate; }
+  @keyframes glow { from { box-shadow: 0 0 4px #00FF88; } to { box-shadow: 0 0 12px #00FF88; } }
+
+  /* ─── COMMENTARY ─── */
+  #commentary {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.88);
+    border: 2px solid var(--orange);
+    border-radius: 20px;
+    padding: 9px 22px;
+    font-family: 'Bangers', cursive;
+    font-size: clamp(0.85rem, 2vw, 1.1rem);
+    color: var(--gold);
+    text-align: center; max-width: 75vw;
+    z-index: 40; display: none;
+    letter-spacing: 1px;
+    animation: commentaryPop 0.3s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes commentaryPop { from { transform: translateX(-50%) scale(0.85); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+
+  /* ─── EVENT BANNER ─── */
+  #eventBanner {
+    position: fixed; top: 78px; left: 50%; transform: translateX(-50%);
+    background: linear-gradient(135deg, rgba(200,0,0,0.92), rgba(120,0,0,0.92));
+    border: 2px solid rgba(255,100,100,0.6);
+    border-radius: 14px;
+    padding: 7px 24px;
+    font-family: 'Bangers', cursive;
+    font-size: clamp(1rem, 2.5vw, 1.3rem);
+    color: white; text-align: center;
+    z-index: 40; display: none;
+    letter-spacing: 1.5px;
+    animation: bannerDrop 0.3s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes bannerDrop { from { transform: translateX(-50%) translateY(-30px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
+
+  /* ─── RIVALRY INTRO ─── */
+  #rivalryIntro {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(0,0,0,0.92);
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    pointer-events: none;
+  }
+  #rivalryIntro.show { display: flex; }
+  .rivalry-line1 {
+    font-family: 'Bangers', cursive;
+    font-size: clamp(2rem, 6vw, 4.5rem);
+    color: var(--gold);
+    text-shadow: 0 0 40px #FF4400;
+    animation: rivalryPulse 0.6s infinite alternate;
+    letter-spacing: 4px;
+  }
+  .rivalry-line2 {
+    font-size: clamp(1rem, 3vw, 1.8rem);
+    color: white; margin-top: 10px;
+    opacity: 0.9;
+  }
+  @keyframes rivalryPulse {
+    from { transform: scale(1); color: var(--gold); }
+    to   { transform: scale(1.06); color: #FF4400; }
+  }
+
+  /* ─── WIN SCREEN ─── */
+  #winScreen {
+    background: radial-gradient(ellipse at center, #1a0050 0%, #050010 100%);
+    overflow-y: auto;
+    padding: 20px;
+  }
+  .win-box {
+    text-align: center; max-width: 560px; width: 100%;
+  }
+  .win-trophy { font-size: 5rem; animation: spin 3s linear infinite; display: block; }
+  @keyframes spin { from { transform: rotate(0deg) scale(1); } 50% { transform: rotate(180deg) scale(1.1); } to { transform: rotate(360deg) scale(1); } }
+  .win-title {
+    font-family: 'Bangers', cursive;
+    font-size: clamp(2rem, 6vw, 3.5rem);
+    color: var(--gold);
+    text-shadow: 0 0 30px #FF6600;
+    letter-spacing: 3px;
+  }
+  .win-score {
+    font-size: 1.3rem; color: var(--pink);
+    margin: 8px 0 4px;
+  }
+  .win-sub { color: rgba(255,255,255,0.6); font-size: 0.95rem; margin-bottom: 16px; }
+  .stats-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 10px; margin: 16px 0;
+    text-align: left;
+  }
+  .stat-card {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px; padding: 10px 12px;
+  }
+  .stat-name { font-size: 0.78rem; color: var(--gold); margin-bottom: 4px; }
+  .stat-val { font-size: 1rem; color: white; }
+
+  /* ─── BOTTOM CONTROLS TIP ─── */
+  #controlsTip {
+    position: fixed; bottom: 8px; right: 12px;
+    font-size: 0.6rem; color: rgba(255,255,255,0.25);
+    text-align: right; z-index: 30; pointer-events: none; display: none;
+    line-height: 1.6;
+  }
+  #controlsTip.visible { display: block; }
+
+  /* ─── ROTATE OVERLAY ─── */
+  #rotateOverlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 9999;
+    background: #0d0820;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    gap: 16px;
+  }
+  #rotateOverlay.show { display: flex; }
+  .rotate-icon {
+    font-size: 5rem;
+    animation: rotatePhone 1.8s ease-in-out infinite;
+  }
+  @keyframes rotatePhone {
+    0%,100% { transform: rotate(0deg); }
+    40%      { transform: rotate(-90deg); }
+    60%      { transform: rotate(-90deg); }
+  }
+  .rotate-text {
+    font-family: 'Bangers', cursive;
+    font-size: 2rem; color: var(--gold);
+    letter-spacing: 3px;
+  }
+  .rotate-sub { color: rgba(255,255,255,0.5); font-size: 0.9rem; }
+
+  /* ─── ONLINE MULTIPLAYER MODAL ─── */
+  #onlineModal {
+    display: none;
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.9);
+    backdrop-filter: blur(10px);
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 16px;
+    padding: 20px;
+  }
+  #onlineModal.show { display: flex; }
+  .modal-box {
+    background: radial-gradient(ellipse at 30% 20%, #1a0050 0%, #0d0820 70%);
+    border: 2px solid rgba(255,215,0,0.3);
+    border-radius: 24px;
+    padding: 32px 28px;
+    max-width: 480px; width: 100%;
+    text-align: center;
+  }
+  .modal-title {
+    font-family: 'Bangers', cursive;
+    font-size: 2rem; color: var(--gold);
+    letter-spacing: 3px; margin-bottom: 6px;
+  }
+  .modal-sub { color: rgba(255,255,255,0.5); font-size: 0.85rem; margin-bottom: 20px; }
+
+  .tab-row { display: flex; gap: 0; margin-bottom: 20px; border-radius: 12px; overflow: hidden; border: 1.5px solid rgba(255,255,255,0.15); }
+  .tab-btn {
+    flex: 1; padding: 10px; cursor: pointer;
+    background: rgba(255,255,255,0.05);
+    border: none; color: #aaa;
+    font-family: 'Bangers', cursive; font-size: 1rem; letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+  .tab-btn.active { background: rgba(255,215,0,0.2); color: var(--gold); }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .room-code-display {
+    font-family: 'Bangers', cursive;
+    font-size: 3rem; letter-spacing: 10px;
+    color: #00FF88;
+    text-shadow: 0 0 20px rgba(0,255,136,0.5);
+    background: rgba(0,255,136,0.07);
+    border: 2px solid rgba(0,255,136,0.3);
+    border-radius: 12px; padding: 14px 24px;
+    margin: 12px auto; display: inline-block;
+    cursor: pointer; transition: all 0.2s;
+    min-width: 200px;
+  }
+  .room-code-display:hover { background: rgba(0,255,136,0.14); }
+
+  .code-hint { font-size: 0.72rem; color: rgba(255,255,255,0.35); margin-bottom: 12px; }
+
+  .join-input {
+    background: rgba(255,255,255,0.07);
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 12px; padding: 12px 18px;
+    font-family: 'Bangers', cursive; font-size: 2rem;
+    letter-spacing: 8px; color: white; text-align: center;
+    width: 100%; outline: none;
+    text-transform: uppercase;
+    transition: border-color 0.2s;
+  }
+  .join-input:focus { border-color: var(--gold); }
+  .join-input::placeholder { color: rgba(255,255,255,0.2); letter-spacing: 4px; font-size: 1.4rem; }
+
+  .online-status {
+    font-size: 0.8rem; min-height: 22px;
+    padding: 4px 12px; border-radius: 20px;
+    transition: all 0.3s;
+  }
+  .online-status.waiting { color: #FFD700; background: rgba(255,215,0,0.1); }
+  .online-status.connected { color: #00FF88; background: rgba(0,255,136,0.1); }
+  .online-status.error { color: #FF6666; background: rgba(255,102,102,0.1); }
+
+  .player-slots {
+    display: flex; gap: 12px; margin: 12px 0;
+  }
+  .player-slot {
+    flex: 1; background: rgba(255,255,255,0.04);
+    border: 1.5px solid rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 10px;
+    font-size: 0.8rem; color: #888;
+    transition: all 0.3s;
+  }
+  .player-slot.filled { border-color: #00FF88; color: #00FF88; background: rgba(0,255,136,0.07); }
+  .player-slot-label { font-family: 'Bangers', cursive; font-size: 1rem; letter-spacing: 1px; display: block; margin-bottom: 3px; }
+
+  /* ─── ONLINE INDICATOR IN HUD ─── */
+  .online-badge {
+    background: rgba(0,255,136,0.15);
+    border: 1px solid #00FF88;
+    border-radius: 20px; padding: 2px 10px;
+    font-size: 0.65rem; color: #00FF88;
+    letter-spacing: 1px;
+    animation: onlinePulse 2s infinite alternate;
+  }
+  @keyframes onlinePulse { from { opacity: 0.7; } to { opacity: 1; } }
+
+
+  /* ══════════════════════════════════════════
+     DUAL CONTROLS  (touch + mouse + keyboard)
+  ══════════════════════════════════════════ */
+
+  /* Prevent text selection & callout on long-press */
+  #gameControls * {
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
+  }
+
+  #gameControls {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 160px;
+    z-index: 35;
+    pointer-events: none;
+    display: none;              /* shown via JS when game runs */
+  }
+  #gameControls.visible { display: block; }
+
+  /* ── Half-pads ── */
+  .ctrl-pad {
+    position: absolute;
+    bottom: 10px;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    pointer-events: all;
+  }
+  .ctrl-pad.pad-left  { left: 8px; }
+  .ctrl-pad.pad-right { right: 8px; flex-direction: row-reverse; }
+
+  /* ── D-pad container ── */
+  .dpad {
+    position: relative;
+    width: 116px; height: 116px;
+    flex-shrink: 0;
+  }
+
+  /* ── Individual D-pad buttons ── */
+  .dp {
+    position: absolute;
+    width: 46px; height: 46px;
+    border-radius: 11px;
+    background: rgba(255,255,255,0.10);
+    border: 2px solid rgba(255,255,255,0.22);
+    color: #fff;
+    font-size: 1.2rem;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: background .07s, transform .07s, border-color .07s;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .dp.dp-left  { left: 0;    top: 35px; }
+  .dp.dp-right { right: 0;   top: 35px; }
+  .dp.dp-up    { left: 35px; top: 0;    }
+
+  .dp.active {
+    background: rgba(255,215,0,0.38);
+    border-color: #FFD700;
+    transform: scale(0.91);
+  }
+
+  /* ── Action buttons ── */
+  .act-col {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    justify-content: flex-end;
+    padding-bottom: 2px;
+  }
+  .ab {
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    border: 2.5px solid rgba(255,255,255,0.28);
+    background: rgba(255,255,255,0.10);
+    color: #fff;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .07s, transform .07s;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .ab-label { font-size: 0.55rem; opacity: .75; margin-top: 2px; font-family: 'Bangers', cursive; letter-spacing: 1px; }
+
+  .ab-shoot {
+    background: rgba(255,102,0,0.28);
+    border-color: #FF6600;
+  }
+  .ab-shoot.active { background: rgba(255,102,0,0.65); transform: scale(0.91); }
+
+  .ab-power {
+    background: rgba(155,0,255,0.28);
+    border-color: #9B00FF;
+    font-size: .9rem;
+  }
+  .ab-power.active { background: rgba(155,0,255,0.65); transform: scale(0.91); }
+
+  /* Player label */
+  .pad-tag {
+    position: absolute;
+    top: -16px; left: 50%; transform: translateX(-50%);
+    font-size: 0.58rem;
+    color: rgba(255,255,255,0.32);
+    letter-spacing: 1px;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* Push commentary above controls on narrow screens */
+  @media (max-width: 640px) {
+    #commentary        { bottom: 172px !important; }
+    #controlsTip       { display: none !important; }
+    .hud-score         { font-size: 2rem; letter-spacing: 4px; }
+    .power-bar-bg      { width: 70px; }
+
+    /* ── Shrink menu content so it fits / scrolls on small phones ── */
+    .menu-title        { font-size: clamp(1.8rem, 8vw, 3rem); margin-bottom: 2px; }
+    .menu-sub          { font-size: 0.72rem; margin-bottom: 10px; }
+    #selTitle          { font-size: 1rem; margin-bottom: 6px; }
+    .sel-info          { margin-bottom: 8px; gap: 8px; }
+    .sel-badge         { font-size: 0.72rem; padding: 4px 12px; min-width: 120px; }
+
+    .team-grid {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 7px;
+      margin-bottom: 10px;
+    }
+    .team-card         { padding: 8px 5px 7px; border-radius: 10px; }
+    .team-flag         { font-size: 1.7rem; }
+    .team-name         { font-size: 0.85rem; }
+    .team-power        { font-size: 0.52rem; }
+
+    .btn-row           { gap: 7px; margin-bottom: 7px; }
+    .btn               { font-size: 0.9rem; padding: 10px 18px; }
+    .btn-sm            { font-size: 0.78rem; padding: 8px 14px; }
+    .controls-hint     { font-size: 0.6rem; }
+
+    /* Online modal scrollable on small screens */
+    #onlineModal       { align-items: flex-start; padding-top: 12px; overflow-y: auto; }
+    .modal-box         { padding: 20px 16px; }
+  }
+
+  /* Very small phones (iPhone SE etc) */
+  @media (max-width: 390px) {
+    .team-grid         { grid-template-columns: repeat(2, 1fr); }
+    .menu-title        { font-size: 1.6rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- GAME CANVAS -->
+<canvas id="gameCanvas"></canvas>
+
+<!-- ── ROTATE OVERLAY (portrait on mobile) ── -->
+<div id="rotateOverlay">
+  <div class="rotate-icon">📱</div>
+  <div class="rotate-text">ROTATE YOUR PHONE</div>
+  <div class="rotate-sub">World Cup Chaos plays best in landscape mode 🏟️</div>
+</div>
+
+<!-- ── ONLINE MULTIPLAYER MODAL ── -->
+<div id="onlineModal">
+  <div class="modal-box">
+    <div class="modal-title">🌐 ONLINE MATCH</div>
+    <div class="modal-sub">Play against a friend on another device or browser tab</div>
+
+    <div class="tab-row">
+      <button class="tab-btn active" id="tabHost" onclick="switchTab('host')">🏠 HOST GAME</button>
+      <button class="tab-btn" id="tabJoin" onclick="switchTab('join')">🔗 JOIN GAME</button>
+    </div>
+
+    <!-- HOST PANEL -->
+    <div class="tab-panel active" id="panelHost">
+      <div style="margin-bottom:8px;color:#aaa;font-size:0.8rem">Share this code with your opponent:</div>
+      <div class="room-code-display" id="roomCodeDisplay" title="Click to copy">----</div>
+      <div class="code-hint">📋 Click code to copy &nbsp;|&nbsp; Code expires when you leave</div>
+      <div class="player-slots">
+        <div class="player-slot filled" id="slotHost">
+          <span class="player-slot-label">👑 YOU (HOST)</span>
+          <span id="hostTeamLabel">Waiting for team…</span>
+        </div>
+        <div class="player-slot" id="slotGuest">
+          <span class="player-slot-label">👤 OPPONENT</span>
+          <span id="guestStatusLabel">Waiting to join…</span>
+        </div>
+      </div>
+      <div class="online-status waiting" id="hostStatus">⏳ Waiting for opponent to join…</div>
+      <div class="btn-row" style="margin-top:14px">
+        <button class="btn btn-primary" id="btnStartOnline" disabled style="opacity:0.4">⚽ START MATCH</button>
+        <button class="btn btn-secondary btn-sm" onclick="closeOnlineModal()">✕ CANCEL</button>
+      </div>
+    </div>
+
+    <!-- JOIN PANEL -->
+    <div class="tab-panel" id="panelJoin">
+      <div style="margin-bottom:10px;color:#aaa;font-size:0.8rem">Enter the 4-letter code from your friend:</div>
+      <input class="join-input" id="joinCodeInput" placeholder="XXXX" maxlength="4" spellcheck="false" autocomplete="off">
+      <div class="online-status" id="joinStatus" style="margin-top:10px">&nbsp;</div>
+      <div class="btn-row" style="margin-top:14px">
+        <button class="btn btn-primary" id="btnJoinRoom" onclick="joinRoom()">🔗 JOIN!</button>
+        <button class="btn btn-secondary btn-sm" onclick="closeOnlineModal()">✕ CANCEL</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── MENU SCREEN ── -->
+<div class="screen" id="menuScreen">
+  <div class="menu-stars" id="starsContainer"></div>
+
+  <div class="menu-title">⚽ WORLD CUP CHAOS ⚽</div>
+  <div class="menu-sub">Where Football Meets Internet Madness 🔥🐐</div>
+
+  <div id="selTitle">🟢 Player 1 — Pick Your Nation</div>
+  <div class="sel-info">
+    <div class="sel-badge" id="p1badge">P1: —</div>
+    <div class="sel-badge" id="p2badge">P2: —</div>
+  </div>
+
+  <div class="team-grid" id="teamGrid">
+    <div class="team-card" data-team="argentina">
+      <span class="team-flag">🇦🇷</span>
+      <span class="team-name">ARGENTINA</span>
+      <span class="team-power">⚡ Messi Magic — freeze + curve shot</span>
+    </div>
+    <div class="team-card" data-team="brazil">
+      <span class="team-flag">🇧🇷</span>
+      <span class="team-name">BRAZIL</span>
+      <span class="team-power">🕺 Samba Speed — turbo + dance</span>
+    </div>
+    <div class="team-card" data-team="germany">
+      <span class="team-flag">🇩🇪</span>
+      <span class="team-name">GERMANY</span>
+      <span class="team-power">🤖 Precision Mode — laser shot</span>
+    </div>
+    <div class="team-card" data-team="france">
+      <span class="team-flag">🇫🇷</span>
+      <span class="team-name">FRANCE</span>
+      <span class="team-power">💨 Turbo Counter — mega dash</span>
+    </div>
+    <div class="team-card" data-team="portugal">
+      <span class="team-flag">🇵🇹</span>
+      <span class="team-name">PORTUGAL</span>
+      <span class="team-power">🦅 SIUUUU Shot — super jump kick</span>
+    </div>
+    <div class="team-card" data-team="spain">
+      <span class="team-flag">🇪🇸</span>
+      <span class="team-name">SPAIN</span>
+      <span class="team-power">🧲 Tiki-Taka — ball magnet mode</span>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btnKickoff">⚽ KICK OFF!</button>
+    <button class="btn btn-secondary btn-sm" id="btnVsAI">🤖 VS AI</button>
+    <button class="btn btn-secondary btn-sm" id="btnPenalty">🥅 PENALTIES</button>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-secondary" id="btnOnline" style="background:linear-gradient(135deg,#006633,#00AA55);box-shadow:0 4px 20px rgba(0,200,100,0.4)">🌐 ONLINE MULTIPLAYER</button>
+  </div>
+  <div class="controls-hint">
+    ⌨️ P1: WASD · F shoot · G power &nbsp;|&nbsp; P2: Arrow Keys · K shoot · L power<br>
+    📱 Mobile / touch: On-screen buttons appear automatically when game starts
+  </div>
+</div>
+
+<!-- ── HUD ── -->
+<div id="hud">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+    <div class="power-bar-wrap">
+      <div class="power-label" id="p1powerLabel">G: POWER</div>
+      <div class="power-bar-bg"><div class="power-bar-fill" id="p1bar" style="width:100%"></div></div>
+    </div>
+    <div class="hud-team">
+      <div class="hud-team-flag" id="h1flag">🇦🇷</div>
+      <div class="hud-team-name" id="h1name">ARG</div>
+    </div>
+  </div>
+
+  <div class="hud-center">
+    <div class="hud-score"><span id="score1">0</span> — <span id="score2">0</span></div>
+    <div class="hud-timer" id="hudTimer">2:00</div>
+    <div id="onlineBadge" class="online-badge" style="display:none">🌐 ONLINE</div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+    <div class="power-bar-wrap">
+      <div class="power-label" id="p2powerLabel">L: POWER</div>
+      <div class="power-bar-bg"><div class="power-bar-fill" id="p2bar" style="width:100%"></div></div>
+    </div>
+    <div class="hud-team">
+      <div class="hud-team-flag" id="h2flag">🇧🇷</div>
+      <div class="hud-team-name" id="h2name">BRA</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── COMMENTARY / EVENT ── -->
+<div id="commentary"></div>
+<div id="eventBanner"></div>
+
+<!-- ── RIVALRY INTRO ── -->
+<div id="rivalryIntro">
+  <div class="rivalry-line1">🇦🇷 VS 🇧🇷<br>THE ETERNAL RIVALRY</div>
+  <div class="rivalry-line2">Argentina vs Brazil — THIS IS WAR ⚔️🔥</div>
+</div>
+
+<!-- ── WIN SCREEN ── -->
+<div class="screen hidden" id="winScreen">
+  <div class="win-box" id="winBox"></div>
+</div>
+
+<!-- ── CONTROLS TIP ── -->
+<div id="controlsTip">
+  P1: WASD+F+G &nbsp;|&nbsp; P2: Arrows+K+L
+</div>
+
+<!-- ══════════════════════════════════════
+     ON-SCREEN GAME CONTROLS
+     Works with touch AND mouse clicks
+     Shown during every game session
+══════════════════════════════════════ -->
+<div id="gameControls">
+
+  <!-- ── P1 LEFT PAD ── -->
+  <div class="ctrl-pad pad-left" id="padP1">
+    <div style="position:relative">
+      <span class="pad-tag">P1 · WASD/Touch</span>
+      <div class="dpad">
+        <div class="dp dp-left"  id="b1L">◀</div>
+        <div class="dp dp-up"    id="b1U">▲</div>
+        <div class="dp dp-right" id="b1R">▶</div>
+      </div>
+    </div>
+    <div class="act-col">
+      <div class="ab ab-shoot" id="b1S">⚽<span class="ab-label">SHOOT</span></div>
+      <div class="ab ab-power" id="b1P">✨<span class="ab-label">POWER</span></div>
+    </div>
+  </div>
+
+  <!-- ── P2 RIGHT PAD ── -->
+  <div class="ctrl-pad pad-right" id="padP2">
+    <div style="position:relative">
+      <span class="pad-tag">P2 · Arrows/Touch</span>
+      <div class="dpad">
+        <div class="dp dp-left"  id="b2L">◀</div>
+        <div class="dp dp-up"    id="b2U">▲</div>
+        <div class="dp dp-right" id="b2R">▶</div>
+      </div>
+    </div>
+    <div class="act-col">
+      <div class="ab ab-shoot" id="b2S">⚽<span class="ab-label">SHOOT</span></div>
+      <div class="ab ab-power" id="b2P">✨<span class="ab-label">POWER</span></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ─────────────────────────────────────────────────────────────
+   WORLD CUP CHAOS — Full Game Engine
+   ─────────────────────────────────────────────────────────────*/
+(function() {
+'use strict';
+
+/* ── CANVAS SETUP ── */
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+let W, H, GROUND, GOAL_H, GOAL_W, GOAL_Y, LPOST, RPOST;
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  GROUND = H - 80;
+  GOAL_H = Math.round(H * 0.17);
+  GOAL_W = 18;
+  GOAL_Y = GROUND - GOAL_H;
+  LPOST  = 0;
+  RPOST  = W;
+}
+resize();
+window.addEventListener('resize', resize);
+
+/* ── TEAM DATA ── */
+const TEAMS = {
+  argentina: { name:'Argentina', short:'ARG', flag:'🇦🇷', jerseyCol:'#75AADB', jerseyAlt:'#FFFFFF', sockCol:'#FFFFFF', powerName:'Messi Magic', powerCol:'#4A90D9', powerKey:'messi' },
+  brazil:    { name:'Brazil',    short:'BRA', flag:'🇧🇷', jerseyCol:'#FEDF00', jerseyAlt:'#009C3B', sockCol:'#FEDF00', powerName:'Samba Speed', powerCol:'#FEDF00', powerKey:'samba' },
+  germany:   { name:'Germany',   short:'GER', flag:'🇩🇪', jerseyCol:'#D8D8D8', jerseyAlt:'#1a1a1a', sockCol:'#1a1a1a', powerName:'Precision Mode', powerCol:'#888', powerKey:'precision' },
+  france:    { name:'France',    short:'FRA', flag:'🇫🇷', jerseyCol:'#002395', jerseyAlt:'#FFFFFF', sockCol:'#CC0000', powerName:'Turbo Counter', powerCol:'#3355FF', powerKey:'turbo' },
+  portugal:  { name:'Portugal',  short:'POR', flag:'🇵🇹', jerseyCol:'#CC0000', jerseyAlt:'#006600', sockCol:'#CC0000', powerName:'SIUUUU Shot', powerCol:'#FF3300', powerKey:'siuuu' },
+  spain:     { name:'Spain',     short:'ESP', flag:'🇪🇸', jerseyCol:'#AA151B', jerseyAlt:'#F1BF00', sockCol:'#AA151B', powerName:'Tiki-Taka', powerCol:'#AA151B', powerKey:'tikitaka' },
+};
+
+/* ── COMMENTARY ── */
+const LINES = [
+  "THIS IS NOT FOOTBALL, THIS IS WAR!","Brazil dancing again for no reason!",
+  "Argentina fans already crying!","Referee has lost ALL control!",
+  "SIUUUU DETECTED!","Messi magic activated — 🐐!",
+  "Someone call an ambulance... it's fine, he's fine.","VAR is checking... still checking...",
+  "That was NOT a foul! Disgraceful acting!", "INCREDIBLE! My grandmother plays better!",
+  "The goat has entered the building!","WHAT A DIVE! Oscar-worthy performance!",
+  "The ball hit the corner flag — HOW?!","Even the mascot is arguing with the ref!",
+  "ABSOLUTE SCENES! The commentator has fainted!","Both benches are now on the pitch!",
+  "The keeper is doing WHAT right now?!","Pure chaos — beautiful, beautiful chaos!",
+];
+
+const EVENTS = [
+  { label:"🐐 GOAT INVADES THE FIELD!", fn: gs => { gs.ball.vx=(Math.random()-0.5)*22; gs.ball.vy=-12; } },
+  { label:"🍌 FANS THROW BANANAS!", fn: gs => { for(let i=0;i<30;i++) addParticle(gs, Math.random()*W, Math.random()*(GROUND*0.5), '#FFD700', (Math.random()-0.5)*5, Math.random()*4+1, 80, 8); } },
+  { label:"📺 FAKE VAR CHECK — 3 MINUTES ADDED!", fn: gs => { gs.freezeTimer=180; } },
+  { label:"⚡ LIGHTNING STRIKE!", fn: gs => { gs.ball.vx*=3.5; gs.ball.vy=-18; } },
+  { label:"📻 COMMENTATOR COMPLETELY LOSES MIND!", fn: null },
+  { label:"💃 EVERYONE DOES THE SAMBA NOW!", fn: gs => { gs.p1.dancing=150; gs.p2.dancing=150; gs.funStats.dances[0]++; gs.funStats.dances[1]++; } },
+  { label:"🟥 REF CARDS THE WRONG PLAYER!", fn: gs => { addEmote(gs, gs.p1, '🟥'); addEmote(gs, gs.p2, '😂'); gs.funStats.args[0]++; } },
+  { label:"🤕 DRAMATIC FAKE INJURY SPOTTED!", fn: gs => { const p=Math.random()<0.5?gs.p1:gs.p2; p.diving=100; addEmote(gs,p,'🤕'); gs.funStats.dives[p===gs.p1?0:1]++; } },
+];
+
+/* ── GAME STATE ── */
+let p1Team = null, p2Team = null;
+let selStep = 0;
+let gameMode = 'pvp';  // pvp | ai | penalty
+let gameRunning = false;
+let gs = null; // game state object
+
+function mkPlayer(x, side, teamKey) {
+  return {
+    x, y: 0, vx: 0, vy: 0,
+    side, team: teamKey,
+    facing: side === 1 ? 1 : -1,
+    onGround: true,
+    kickCD: 0, frozen: 0, dancing: 0, diving: 0, siuuTimer: 0,
+    headR: 22, bodyH: 34, bodyW: 20,
+    speedBoost: 1, powerTimer: 0,
+    precisionTimer: 0, turboTimer: 0, magnetTimer: 0,
+    emotes: [],
+  };
+}
+
+function mkBall() {
+  return {
+    x: W/2, y: 0, vx: (Math.random()-.5)*4, vy: -5,
+    r: 13, rotAngle: 0, spin: 0,
+    trail: [],
+  };
+}
+
+function initGame() {
+  const p1 = mkPlayer(W*0.25, 1, p1Team);
+  const p2 = mkPlayer(W*0.75, 2, p2Team);
+  p1.y = p2.y = GROUND;
+  const ball = mkBall();
+  ball.y = GROUND - 40;
+  gs = {
+    p1, p2, ball,
+    score: [0, 0],
+    timeLeft: 120,
+    particles: [], emotes: [],
+    powerCD1: 0, powerCD2: 0,
+    freezeTimer: 0,
+    eventTimer: 28,
+    commentaryTimer: 12,
+    aiTimer: 0,
+    isRivalry: (p1Team==='argentina'&&p2Team==='brazil')||(p1Team==='brazil'&&p2Team==='argentina'),
+    funStats: { dives:[0,0], args:[0,0], dances:[0,0], crowdShots:[0,0] },
+    penaltyPhase: gameMode==='penalty' ? 'ready' : null,
+    goalFreeze: 0,
+    goalScored: false,
+    crowdWave: 0,
+  };
+}
+
+/* ── PARTICLES / EMOTES ── */
+function addParticle(gs, x, y, col, vx, vy, life, sz) {
+  gs.particles.push({ x, y, col, vx:vx||((Math.random()-.5)*7), vy:vy||(-Math.random()*6-2), life:life||70, maxLife:life||70, sz:sz||6 });
+}
+function burst(gs, x, y, cols, count) {
+  for(let i=0;i<(count||40);i++) {
+    const ang=Math.random()*Math.PI*2, spd=Math.random()*9+2;
+    addParticle(gs,x,y,cols[Math.floor(Math.random()*cols.length)],Math.cos(ang)*spd,Math.sin(ang)*spd-4,100,Math.random()*9+3);
+  }
+}
+function addEmote(gs, player, txt) {
+  player.emotes.push({ y: player.y - player.headR*2.5 - 5, txt, life:90, maxLife:90 });
+}
+
+/* ── UI HELPERS ── */
+let commentaryTO = null, eventTO = null;
+function showCommentary(txt) {
+  const el = document.getElementById('commentary');
+  el.textContent = txt; el.style.display = 'block';
+  clearTimeout(commentaryTO);
+  commentaryTO = setTimeout(()=>el.style.display='none', 3800);
+}
+function showEvent(txt) {
+  const el = document.getElementById('eventBanner');
+  el.textContent = txt; el.style.display = 'block';
+  clearTimeout(eventTO);
+  eventTO = setTimeout(()=>el.style.display='none', 3200);
+}
+function updateHUD() {
+  if(!gs) return;
+  document.getElementById('score1').textContent = gs.score[0];
+  document.getElementById('score2').textContent = gs.score[1];
+  if(gameMode!=='penalty') {
+    const m=Math.floor(gs.timeLeft/60), s=gs.timeLeft%60;
+    document.getElementById('hudTimer').textContent = `${m}:${s<10?'0'+s:s}`;
+  }
+  const f1 = 1 - Math.min(gs.powerCD1/600,1);
+  const f2 = 1 - Math.min(gs.powerCD2/600,1);
+  const b1 = document.getElementById('p1bar');
+  const b2 = document.getElementById('p2bar');
+  b1.style.width = (f1*100)+'%';
+  b2.style.width = (f2*100)+'%';
+  b1.className = 'power-bar-fill' + (f1>=1?' ready':'');
+  b2.className = 'power-bar-fill' + (f2>=1?' ready':'');
+}
+
+/* ── POWERS ── */
+function triggerPower(player, pNum) {
+  if(!gs) return;
+  const cd = `powerCD${pNum}`;
+  if(gs[cd]>0) return;
+  gs[cd]=600;
+  const opp = pNum===1 ? gs.p2 : gs.p1;
+  const pk = TEAMS[player.team].powerKey;
+
+  if(pk==='messi') {
+    opp.frozen=130;
+    gs.ball.vx=player.facing*15; gs.ball.vy=-10; gs.ball.spin=player.facing*0.6;
+    showCommentary("MESSI MAGIC ACTIVATED! 🐐✨ Opponent FROZEN!");
+    addEmote(gs,player,'🐐'); gs.funStats.crowdShots[pNum-1]++;
+    burst(gs,player.x,player.y-30,['#4A90D9','#FFFFFF','#FFD700'],20);
+  } else if(pk==='samba') {
+    player.speedBoost=2.8; player.powerTimer=200; player.dancing=150;
+    gs.ball.vx+=player.facing*4;
+    showCommentary("SAMBA SPEED! 🕺🎺 Brazil is UNSTOPPABLE!"); addEmote(gs,player,'🕺');
+    gs.funStats.dances[pNum-1]++;
+    burst(gs,player.x,player.y-30,['#FEDF00','#009C3B','#FFFFFF'],20);
+  } else if(pk==='precision') {
+    gs.ball.vx=player.facing*18; gs.ball.vy=-2; player.precisionTimer=160;
+    showCommentary("GERMAN PRECISION ENGAGED! 🤖💥 LASER SHOT!"); addEmote(gs,player,'🎯');
+    burst(gs,player.x,player.y-30,['#888','#DDD','#333'],15);
+  } else if(pk==='turbo') {
+    player.turboTimer=220; player.speedBoost=3.2; player.vx=player.facing*18;
+    showCommentary("FRENCH TURBO COUNTERATTACK! 💨💨 IMPOSSIBLE TO STOP!"); addEmote(gs,player,'⚡');
+    burst(gs,player.x,player.y-30,['#002395','#FFFFFF','#ED2939'],20);
+  } else if(pk==='siuuu') {
+    player.vy=-22; player.siuuTimer=80;
+    gs.ball.vx=player.facing*15; gs.ball.vy=-14;
+    showCommentary("SIUUUUUUUU! 🦅🔥 RONALDO MOMENT ACTIVATED!"); addEmote(gs,player,'SIUUU!');
+    gs.funStats.crowdShots[pNum-1]++;
+    burst(gs,player.x,player.y-30,['#CC0000','#FEDF00','#FFFFFF'],25);
+  } else if(pk==='tikitaka') {
+    player.magnetTimer=280;
+    showCommentary("TIKI-TAKA MODE! 🧲 The ball belongs to SPAIN!"); addEmote(gs,player,'🧲');
+    burst(gs,player.x,player.y-30,['#AA151B','#F1BF00','#FFFFFF'],20);
+  }
+}
+
+/* ── GOAL ── */
+function registerGoal(scorer) {
+  if(!gs||gs.goalScored) return;
+  gs.goalScored = true;
+  gs.score[scorer-1]++;
+  // Notify online guest
+  if(window._notifyOnlineGoal) window._notifyOnlineGoal(scorer);
+  const t1=TEAMS[p1Team], t2=TEAMS[p2Team];
+  const cols = scorer===1 ? [t1.jerseyCol, t1.jerseyAlt, '#FFD700'] : [t2.jerseyCol, t2.jerseyAlt, '#FFD700'];
+  burst(gs, W/2, H/2, cols, 80);
+
+  const msgs=["GOOOOOOAL! 🎉","WHAT A STRIKE! INCREDIBLE!","GOLAZO! GOLAZO! GOLAZO!","THE CROWD GOES ABSOLUTELY WILD!","UNBELIEVABLE!!! LOOK AT THAT!"];
+  const extra = scorer===1 ? (gs.isRivalry?" 🇦🇷 ARGENTINA TAKES THE LEAD IN THE RIVALRY!":" 🎉 PLAYER 1 SCORES!") : (gs.isRivalry?" 🇧🇷 BRAZIL STRIKES BACK!":" 🎉 PLAYER 2 SCORES!");
+  showCommentary(msgs[Math.floor(Math.random()*msgs.length)]+extra);
+  if(gs.isRivalry) {
+    showEvent("🎆 RIVALRY GOAL! 🎆 DRAMATIC SLOW-MOTION REPLAY!");
+    burst(gs,W*0.3,H*0.3,['#75AADB','#FEDF00','#009C3B','#FF4400'],60);
+    burst(gs,W*0.7,H*0.3,['#75AADB','#FEDF00','#009C3B','#FF4400'],60);
+  }
+  gs.funStats.args[scorer===1?1:0]++;
+  updateHUD();
+  gs.goalFreeze = gs.isRivalry ? 120 : 70;
+  setTimeout(resetBall, gs.isRivalry ? 2200 : 1200);
+}
+
+function resetBall() {
+  if(!gs) return;
+  gs.ball.x=W/2; gs.ball.y=GROUND-40; gs.ball.vx=(Math.random()-.5)*5; gs.ball.vy=-4; gs.ball.spin=0; gs.ball.trail=[];
+  gs.p1.x=W*0.25; gs.p1.y=GROUND; gs.p1.vx=0; gs.p1.vy=0;
+  gs.p2.x=W*0.75; gs.p2.y=GROUND; gs.p2.vx=0; gs.p2.vy=0;
+  gs.goalFreeze=0;
+  gs.goalScored=false;
+}
+
+/* ── AI ── */
+function doAI() {
+  const p=gs.p2, b=gs.ball;
+  if(p.frozen>0) return;
+  const spd=4.2*p.speedBoost;
+  const dx=b.x-p.x;
+  if(Math.abs(dx)>50) p.vx = dx>0 ? spd : -spd;
+  else p.vx*=0.7;
+  if(p.onGround && b.y<GROUND-60 && Math.abs(dx)<120 && Math.random()<0.025) p.vy=-16;
+
+  if(Math.abs(dx)<80 && Math.abs(b.y-p.y)<80 && p.kickCD<=0) {
+    const dir = p.x>W/2 ? -1 : 1;
+    b.vx=dir*(9+Math.random()*6); b.vy=-7-Math.random()*4;
+    if(gs.isRivalry){b.vx*=1.25;b.vy*=1.15;}
+    p.kickCD=28; addEmote(gs,p,'💥');
+  }
+  if(Math.random()<0.004 && gs.powerCD2<=0) triggerPower(p,2);
+}
+
+/* ── PHYSICS ── */
+function updatePhysics() {
+  if(!gs||!gameRunning) return;
+  if(gs.goalFreeze>0) { gs.goalFreeze--; return; }
+  if(gs.freezeTimer>0) { gs.freezeTimer--; return; }
+
+  const {p1,p2,ball} = gs;
+
+  [p1,p2].forEach((p,idx) => {
+    if(p.frozen>0){p.frozen--;return;}
+    if(p.powerTimer>0){p.powerTimer--;if(p.powerTimer===0)p.speedBoost=1;}
+    if(p.turboTimer>0){p.turboTimer--;if(p.turboTimer===0)p.speedBoost=1;}
+    if(p.precisionTimer>0)p.precisionTimer--;
+    if(p.dancing>0)p.dancing--;
+    if(p.diving>0)p.diving--;
+    if(p.siuuTimer>0)p.siuuTimer--;
+    if(p.kickCD>0)p.kickCD--;
+    p.emotes=p.emotes.filter(e=>{e.life--;e.y-=0.5;return e.life>0;});
+
+    p.vy+=0.85; p.x+=p.vx; p.y+=p.vy;
+    if(p.y>=GROUND){p.y=GROUND;p.vy=0;p.onGround=true;}else p.onGround=false;
+    p.x=Math.max(22,Math.min(W-22,p.x));
+    p.vx*=p.onGround?0.78:0.96;
+
+    // magnet
+    if(p.magnetTimer>0){
+      p.magnetTimer--;
+      const bdx=ball.x-p.x,bdy=ball.y-p.y;
+      const dist=Math.sqrt(bdx*bdx+bdy*bdy);
+      if(dist<220&&dist>35){ball.vx+=(bdx/dist)*2.2;ball.vy+=(bdy/dist)*2.2;}
+    }
+  });
+
+  // Ball physics
+  ball.vy+=0.52; ball.vx*=0.993; ball.vy*=0.993; ball.spin*=0.98;
+  ball.x+=ball.vx; ball.y+=ball.vy;
+  ball.rotAngle+=ball.vx*0.05;
+
+  // Floor bounce
+  if(ball.y+ball.r>=GROUND){
+    ball.y=GROUND-ball.r; ball.vy=-Math.abs(ball.vy)*0.6; ball.vx+=ball.spin*2;
+    if(Math.abs(ball.vy)<0.9) ball.vy=0;
+  }
+  // Wall bounce
+  if(ball.x-ball.r<=LPOST+GOAL_W&&(ball.y<GOAL_Y||ball.x-ball.r<=LPOST)){ball.vx=Math.abs(ball.vx);}
+  if(ball.x+ball.r>=RPOST-GOAL_W&&(ball.y<GOAL_Y||ball.x+ball.r>=RPOST)){ball.vx=-Math.abs(ball.vx);}
+
+  // Goal detection
+  if(!gs.goalScored){
+    if(ball.x-ball.r<=LPOST+GOAL_W && ball.y>GOAL_Y && ball.y<GROUND){registerGoal(2);}
+    else if(ball.x+ball.r>=RPOST-GOAL_W && ball.y>GOAL_Y && ball.y<GROUND){registerGoal(1);}
+  }
+
+  // Player-ball collision
+  [p1,p2].forEach((p,idx)=>{
+    const bx=ball.x-p.x, by=ball.y-(p.y-p.headR);
+    const dist=Math.sqrt(bx*bx+by*by);
+    if(dist<ball.r+p.headR+12&&p.kickCD<=0){
+      const n=dist||1;
+      ball.vx=(bx/n)*10+p.vx; ball.vy=(by/n)*10+p.vy-4;
+      ball.spin+=p.vx*0.18; p.kickCD=18;
+      if(Math.random()<0.18) addEmote(gs,p,['💥','⚡','😤','🦵','💫'][Math.floor(Math.random()*5)]);
+    }
+  });
+
+  // Trail
+  ball.trail.unshift({x:ball.x,y:ball.y});
+  if(ball.trail.length>10) ball.trail.pop();
+
+  // Particles
+  gs.particles=gs.particles.filter(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.15;p.life--;return p.life>0;});
+
+  // Cooldowns
+  if(gs.powerCD1>0)gs.powerCD1--;
+  if(gs.powerCD2>0)gs.powerCD2--;
+
+  // Crowd wave
+  gs.crowdWave=(gs.crowdWave+0.008)%(Math.PI*2);
+}
+
+/* ── INPUT ── */
+const keys={};
+window.addEventListener('keydown',e=>{keys[e.code]=true; if(['Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();});
+window.addEventListener('keyup',  e=>{keys[e.code]=false;});
+
+function handleInput(){
+  if(!gs||!gameRunning||gs.goalFreeze>0) return;
+  const {p1,p2,ball}=gs;
+  const spd1=5.2*p1.speedBoost;
+
+  if(p1.frozen<=0){
+    if(keys['KeyA']){p1.vx=-spd1;p1.facing=-1;}
+    if(keys['KeyD']){p1.vx=spd1;p1.facing=1;}
+    if(keys['KeyW']&&p1.onGround){p1.vy=-16;}
+    if(keys['KeyS']&&!p1.onGround){p1.vy+=3;}
+    if(keys['KeyF']&&p1.kickCD<=0){
+      const dx=ball.x-p1.x,dy=ball.y-p1.y;
+      if(Math.sqrt(dx*dx+dy*dy)<85){ball.vx=p1.facing*13;ball.vy=-9;p1.kickCD=22;addEmote(gs,p1,'💥');}
+    }
+    if(keys['KeyG']&&gs.powerCD1<=0){triggerPower(p1,1);keys['KeyG']=false;}
+  }
+
+  if(gameMode==='pvp'&&p2.frozen<=0){
+    const spd2=5.2*p2.speedBoost;
+    if(keys['ArrowLeft']){p2.vx=-spd2;p2.facing=-1;}
+    if(keys['ArrowRight']){p2.vx=spd2;p2.facing=1;}
+    if(keys['ArrowUp']&&p2.onGround){p2.vy=-16;}
+    if(keys['ArrowDown']&&!p2.onGround){p2.vy+=3;}
+    if(keys['KeyK']&&p2.kickCD<=0){
+      const dx=ball.x-p2.x,dy=ball.y-p2.y;
+      if(Math.sqrt(dx*dx+dy*dy)<85){ball.vx=p2.facing*13;ball.vy=-9;p2.kickCD=22;addEmote(gs,p2,'💥');}
+    }
+    if(keys['KeyL']&&gs.powerCD2<=0){triggerPower(p2,2);keys['KeyL']=false;}
+  } else if(gameMode==='ai'){
+    doAI();
+  } else if(gameMode==='online_host'){
+    // Host controls P1 (WASD); remote guest keys are fed into arrow/KL slots by BroadcastChannel
+    const spd2=5.2*p2.speedBoost;
+    if(p2.frozen<=0){
+      if(keys['ArrowLeft']){p2.vx=-spd2;p2.facing=-1;}
+      if(keys['ArrowRight']){p2.vx=spd2;p2.facing=1;}
+      if(keys['ArrowUp']&&p2.onGround){p2.vy=-16;}
+      if(keys['ArrowDown']&&!p2.onGround){p2.vy+=3;}
+      if(keys['KeyK']&&p2.kickCD<=0){
+        const dx=ball.x-p2.x,dy=ball.y-p2.y;
+        if(Math.sqrt(dx*dx+dy*dy)<85){ball.vx=p2.facing*13;ball.vy=-9;p2.kickCD=22;addEmote(gs,p2,'💥');}
+      }
+      if(keys['KeyL']&&gs.powerCD2<=0){triggerPower(p2,2);keys['KeyL']=false;}
+    }
+  } else if(gameMode==='online_guest'){
+    // Guest: only control P1 locally (host syncs state back authoritatively)
+    // P1 controls applied above; P2 is driven by state_sync from host
+  }
+}
+
+/* ── DRAW HELPERS ── */
+function drawField(){
+  // Sky gradient
+  const skyGrad=ctx.createLinearGradient(0,0,0,GROUND);
+  skyGrad.addColorStop(0,'#0a1628');
+  skyGrad.addColorStop(1,'#162a50');
+  ctx.fillStyle=skyGrad; ctx.fillRect(0,0,W,GROUND);
+
+  // Pitch stripes
+  const stripes=12;
+  for(let i=0;i<stripes;i++){
+    ctx.fillStyle=i%2===0?'#2a6b24':'#2e7528';
+    ctx.fillRect(i*(W/stripes),0,W/stripes,GROUND);
+  }
+
+  // Centre circle
+  ctx.save();
+  ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,GROUND); ctx.stroke();
+  ctx.beginPath(); ctx.arc(W/2,GROUND-H*0.25,H*0.1,0,Math.PI*2); ctx.stroke();
+  ctx.restore();
+
+  // Penalty areas
+  ctx.save();
+  ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=1.5;
+  const paW=W*0.15, paH=H*0.22;
+  ctx.strokeRect(0,GROUND-paH,paW,paH);
+  ctx.strokeRect(W-paW,GROUND-paH,paW,paH);
+  ctx.restore();
+
+  // Ground
+  const groundGrad=ctx.createLinearGradient(0,GROUND,0,H);
+  groundGrad.addColorStop(0,'#5a4a20');
+  groundGrad.addColorStop(1,'#3a2e10');
+  ctx.fillStyle=groundGrad; ctx.fillRect(0,GROUND,W,H-GROUND);
+  ctx.fillStyle='rgba(0,0,0,0.4)'; ctx.fillRect(0,GROUND,W,6);
+
+  // Goals
+  ctx.fillStyle='rgba(255,255,255,0.75)';
+  ctx.fillRect(0,GOAL_Y,GOAL_W,GOAL_H);
+  ctx.fillRect(W-GOAL_W,GOAL_Y,GOAL_W,GOAL_H);
+  ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=2;
+  ctx.strokeRect(0,GOAL_Y,GOAL_W,GOAL_H);
+  ctx.strokeRect(W-GOAL_W,GOAL_Y,GOAL_W,GOAL_H);
+}
+
+function drawCrowd(){
+  if(!gs) return;
+  const t=Date.now()*0.002;
+  const t1=TEAMS[p1Team], t2=TEAMS[p2Team];
+  const rows=3;
+  for(let row=0;row<rows;row++){
+    const count=Math.floor(W/22)+1;
+    for(let i=0;i<count;i++){
+      const x=(i/(count-1))*W;
+      const baseY=8+row*26;
+      const wave=Math.sin(t+i*0.4+row*1.2)*(gs.isRivalry?12:7);
+
+      let col;
+      if(gs.isRivalry){
+        col=(i+row)%2===0 ? t1.jerseyCol : t2.jerseyCol;
+      } else {
+        col=['#FF6600','#FF3300','#FFD700','#FF69B4','#9966FF','#00CCFF'][(i+row*3)%6];
+      }
+      const hx=x; const hy=baseY+wave+row*2;
+      ctx.fillStyle=col;
+      ctx.beginPath(); ctx.arc(hx,hy,7,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#F4C2A1';
+      ctx.beginPath(); ctx.arc(hx,hy-12,4.5,0,Math.PI*2); ctx.fill();
+    }
+  }
+}
+
+function drawBall(){
+  if(!gs) return;
+  const b=gs.ball;
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.ellipse(b.x,GROUND+3,b.r*1.8,5,0,0,Math.PI*2); ctx.fill();
+  // Trail
+  b.trail.forEach((pt,i)=>{
+    ctx.globalAlpha=(1-(i+1)/b.trail.length)*0.2;
+    ctx.fillStyle='#FFFFFF';
+    ctx.beginPath(); ctx.arc(pt.x,pt.y,b.r*(1-i/b.trail.length),0,Math.PI*2); ctx.fill();
+  });
+  ctx.globalAlpha=1;
+  // Ball
+  ctx.save();
+  ctx.translate(b.x,b.y);
+  ctx.rotate(b.rotAngle);
+  ctx.fillStyle='#FFFFFF';
+  ctx.beginPath(); ctx.arc(0,0,b.r,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#1a1a1a';
+  for(let i=0;i<5;i++){
+    const ang=(i/5)*Math.PI*2;
+    ctx.beginPath(); ctx.arc(Math.cos(ang)*b.r*0.58,Math.sin(ang)*b.r*0.58,3,0,Math.PI*2); ctx.fill();
+  }
+  ctx.fillStyle='#1a1a1a';
+  ctx.beginPath(); ctx.arc(0,0,3.5,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function drawPlayer(p){
+  if(!p) return;
+  const t=TEAMS[p.team];
+  const x=p.x, y=p.y;
+  const hs=p.headR;
+  const now=Date.now();
+  const bob=p.dancing>0?Math.sin(now*0.025)*10:0;
+  const bounce=p.siuuTimer>0?-25:0;
+  const lean=p.diving>0?(p.facing*35):0;
+
+  ctx.save();
+  ctx.translate(x,y+bounce);
+  if(lean) ctx.rotate(lean*Math.PI/180);
+
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,0.2)';
+  ctx.beginPath(); ctx.ellipse(0,4,16,5,0,0,Math.PI*2); ctx.fill();
+
+  // Legs
+  const legSwing=p.onGround?(Math.sin(now*0.015+x)*8):0;
+  ctx.fillStyle=t.jerseyCol;
+  ctx.fillRect(-9,-p.bodyH+p.bodyH-8+bob,7,20+legSwing*0.4);
+  ctx.fillRect(2,-p.bodyH+p.bodyH-8+bob,7,20-legSwing*0.4);
+  ctx.fillStyle='#1a1a1a';
+  ctx.fillRect(-10,12+bob,9,8);
+  ctx.fillRect(1,12+bob,9,8);
+  ctx.fillStyle=t.sockCol||t.jerseyAlt;
+  ctx.fillRect(-10,5+bob,9,8);
+  ctx.fillRect(1,5+bob,9,8);
+
+  // Body
+  ctx.fillStyle=t.jerseyCol;
+  ctx.beginPath();
+  ctx.roundRect(-p.bodyW/2,-p.bodyH+bob,p.bodyW,p.bodyH,4);
+  ctx.fill();
+  // Jersey stripe
+  ctx.fillStyle=t.jerseyAlt;
+  ctx.fillRect(-p.bodyW/2,-p.bodyH+bob,p.bodyW,7);
+  // Number patch
+  ctx.fillStyle='rgba(0,0,0,0.3)';
+  ctx.font='bold 9px Nunito'; ctx.textAlign='center';
+  ctx.fillText('10',-0,-p.bodyH+bob+20);
+
+  // Arms
+  const armSwing=Math.sin(now*0.015)*12;
+  ctx.fillStyle=t.jerseyCol;
+  ctx.fillRect(-p.bodyW/2-7,-p.bodyH+5+bob+armSwing,6,16);
+  ctx.fillRect(p.bodyW/2+1,-p.bodyH+5+bob-armSwing,6,16);
+  ctx.fillStyle='#F4C2A1';
+  ctx.fillRect(-p.bodyW/2-7,11+bob,6,6);
+  ctx.fillRect(p.bodyW/2+1,11+bob,6,6);
+
+  // Head
+  const headY=-p.bodyH-hs+bob;
+  // Neck
+  ctx.fillStyle='#F4C2A1'; ctx.fillRect(-5,headY+hs,-0,10);
+  // Head circle
+  ctx.fillStyle='#F4C2A1';
+  ctx.beginPath(); ctx.arc(0,headY,hs,0,Math.PI*2); ctx.fill();
+  // Frozen overlay
+  if(p.frozen>0){
+    ctx.fillStyle='rgba(120,200,255,0.4)';
+    ctx.beginPath(); ctx.arc(0,headY,hs+5,0,Math.PI*2); ctx.fill();
+  }
+  // Hair
+  ctx.fillStyle='#1a0a00';
+  ctx.beginPath();
+  ctx.arc(0,headY-hs*0.5,hs*0.7,Math.PI,0); ctx.fill();
+  // Eyes
+  ctx.fillStyle=p.frozen>0?'#88CCFF':'#1a1a1a';
+  ctx.beginPath(); ctx.arc(p.facing*7,headY-2,4.5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='white';
+  ctx.beginPath(); ctx.arc(p.facing*7+1.5,headY-4,1.8,0,Math.PI*2); ctx.fill();
+  // Mouth
+  ctx.fillStyle='#CC8866'; ctx.lineWidth=1.5;
+  if(p.dancing>0){
+    ctx.beginPath(); ctx.arc(0,headY+6,6,0,Math.PI); ctx.fill();
+  } else {
+    ctx.strokeStyle='#CC8866';
+    ctx.beginPath(); ctx.arc(0,headY+9,5,0.2,Math.PI-0.2); ctx.stroke();
+  }
+
+  // Power aura
+  if(p.magnetTimer>0||p.precisionTimer>0||p.turboTimer>0){
+    ctx.globalAlpha=0.5+Math.sin(now*0.02)*0.3;
+    ctx.strokeStyle=t.powerCol; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.arc(0,headY-10,hs+12,0,Math.PI*2); ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+
+  // SIUUU text
+  if(p.siuuTimer>0){
+    ctx.fillStyle='#FF4400';
+    ctx.font='bold 14px Bangers,Arial'; ctx.textAlign='center';
+    ctx.fillText('SIUUU!',0,headY-hs-8);
+  }
+
+  ctx.restore();
+
+  // Emotes (world-space)
+  p.emotes.forEach(e=>{
+    ctx.globalAlpha=e.life/e.maxLife;
+    ctx.font='bold 18px Arial'; ctx.textAlign='center';
+    ctx.fillStyle='#FFD700'; ctx.strokeStyle='#000'; ctx.lineWidth=3;
+    ctx.strokeText(e.txt,x,e.y+p.y-p.y); // adjusted
+    // re-draw in correct coord since player uses save/restore
+    ctx.fillText(e.txt,x,e.y);
+    ctx.globalAlpha=1;
+  });
+}
+
+function drawParticles(){
+  if(!gs) return;
+  gs.particles.forEach(p=>{
+    ctx.globalAlpha=p.life/p.maxLife;
+    ctx.fillStyle=p.col;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.sz/2,0,Math.PI*2); ctx.fill();
+  });
+  ctx.globalAlpha=1;
+}
+
+function drawPowerUI(){
+  if(!gs) return;
+  const t=Date.now();
+  // P1 indicator
+  const cd1ready=gs.powerCD1<=0;
+  ctx.fillStyle=cd1ready?'rgba(0,255,136,0.15)':'rgba(0,0,0,0)';
+  if(cd1ready){
+    ctx.font='bold 12px Nunito'; ctx.fillStyle='#00FF88'; ctx.textAlign='left';
+    ctx.fillText(`✨ ${TEAMS[p1Team].powerName} READY — press G`,18,H-20);
+  }
+  const cd2ready=gs.powerCD2<=0;
+  if(cd2ready){
+    ctx.font='bold 12px Nunito'; ctx.fillStyle='#FF88CC'; ctx.textAlign='right';
+    ctx.fillText(`press L — ${TEAMS[p2Team].powerName} READY ✨`,W-18,H-20);
+  }
+}
+
+/* ── GAME LOOP ── */
+let lastTime=0, timerAccum=0;
+function gameLoop(ts){
+  if(!gameRunning){return;}
+  // Online: send inputs & state sync
+  if(window._onlineTick) window._onlineTick(ts);
+  const dt=Math.min((ts-lastTime)/1000,0.05);
+  lastTime=ts;
+  if(gs&&!gs.goalFreeze&&!gs.freezeTimer&&gameMode!=='penalty'){
+    timerAccum+=dt;
+    if(timerAccum>=1){timerAccum-=1;gs.timeLeft--;updateHUD();if(gs.timeLeft<=0)endGame();}
+  }
+  // Random events
+  if(gs){
+    gs.eventTimer-=dt;
+    if(gs.eventTimer<=0){gs.eventTimer=22+Math.random()*15;maybeEvent();}
+    gs.commentaryTimer-=dt;
+    if(gs.commentaryTimer<=0){gs.commentaryTimer=14+Math.random()*12;if(Math.random()<0.5)showCommentary(LINES[Math.floor(Math.random()*LINES.length)]);}
+  }
+
+  ctx.clearRect(0,0,W,H);
+  drawCrowd();
+  drawField();
+  if(gs){
+    handleInput();
+    updatePhysics();
+    drawBall();
+    drawPlayer(gs.p1);
+    drawPlayer(gs.p2);
+    drawParticles();
+    drawPowerUI();
+    updateHUD();
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+function maybeEvent(){
+  if(!gs||Math.random()<0.3) return;
+  const ev=EVENTS[Math.floor(Math.random()*EVENTS.length)];
+  showEvent(ev.label);
+  if(ev.fn) ev.fn(gs);
+  if(Math.random()<0.6) showCommentary(LINES[Math.floor(Math.random()*LINES.length)]);
+}
+
+/* ── START / END ── */
+function startGame(mode){
+  if(mode!=='online_guest'&&mode!=='online_host'){
+    if(!p1Team||!p2Team){alert('Both players must select a team first!');return;}
+  }
+  gameMode=mode||'pvp';
+  initGame();
+
+  document.getElementById('menuScreen').classList.add('hidden');
+  document.getElementById('winScreen').classList.add('hidden');
+  document.getElementById('hud').classList.add('visible');
+  document.getElementById('controlsTip').classList.add('visible');
+
+  // Show online badge
+  const isOnline = mode==='online_host'||mode==='online_guest';
+  document.getElementById('onlineBadge').style.display = isOnline ? 'block' : 'none';
+
+  // HUD labels
+  document.getElementById('h1flag').textContent=TEAMS[p1Team].flag;
+  document.getElementById('h1name').textContent=TEAMS[p1Team].short;
+  document.getElementById('h2flag').textContent=TEAMS[p2Team].flag;
+  document.getElementById('h2name').textContent=TEAMS[p2Team].short;
+  document.getElementById('p1powerLabel').textContent=`G: ${TEAMS[p1Team].powerName}`;
+  document.getElementById('p2powerLabel').textContent=`L: ${TEAMS[p2Team].powerName}`;
+  updateHUD();
+
+  if(gameMode==='penalty') document.getElementById('hudTimer').textContent='PENS';
+
+  if(gs.isRivalry){
+    const ri=document.getElementById('rivalryIntro');
+    ri.classList.add('show');
+    showCommentary("THE GREATEST RIVALRY IN FOOTBALL HISTORY BEGINS! 🌍🔥⚡");
+    setTimeout(()=>ri.classList.remove('show'),4200);
+  } else {
+    showCommentary(`${TEAMS[p1Team].flag} ${TEAMS[p1Team].name} vs ${TEAMS[p2Team].flag} ${TEAMS[p2Team].name} — LET'S GO!`);
+  }
+  gameRunning=true;
+  lastTime=performance.now();
+  requestAnimationFrame(gameLoop);
+  // Show controls for online modes (can't hook button click since they start programmatically)
+  if(mode==='online_host'||mode==='online_guest'){
+    setTimeout(()=>{
+      document.getElementById('gameControls')?.classList.add('visible');
+      const padP2=document.getElementById('padP2');
+      if(padP2) padP2.style.display='';
+    },80);
+  }
+}
+
+function endGame(){
+  gameRunning=false;
+  document.getElementById('hud').classList.remove('visible');
+  document.getElementById('controlsTip').classList.remove('visible');
+  // Notify online guest
+  if(window._onlineRole&&window._onlineRole()==='host'){
+    const ch=window._getOnlineChannel?.();
+    if(ch) ch.postMessage({type:'game_over'});
+  }
+  const ws=document.getElementById('winScreen');
+  ws.classList.remove('hidden');
+  buildWinScreen();
+}
+
+function buildWinScreen(){
+  const t1=TEAMS[p1Team],t2=TEAMS[p2Team];
+  const s1=gs.score[0],s2=gs.score[1];
+  const winner=s1>s2?t1:s2>s1?t2:null;
+  const loser=s1>s2?t2:s2>s1?t1:null;
+  const fstats=gs.funStats;
+  let h='<span class="win-trophy">🏆</span>';
+  if(winner){
+    h+=`<div class="win-title">${winner.flag} ${winner.name.toUpperCase()} WINS!</div>`;
+    h+=`<div class="win-score">${t1.flag} ${s1} — ${s2} ${t2.flag}</div>`;
+    if(gs.isRivalry) h+=`<div class="win-sub">⚡ The Rivalry is settled — for now ⚡</div>`;
+    if(loser) h+=`<div class="win-sub">${loser.flag} ${loser.name} fans: 😭😭😭 (wait till next time!)</div>`;
+  } else {
+    h+=`<div class="win-title">🤝 EPIC DRAW!</div>`;
+    h+=`<div class="win-score">${t1.flag} ${s1} — ${s2} ${t2.flag}</div>`;
+    h+=`<div class="win-sub">Both teams argue with referee for 45 more minutes 😤</div>`;
+  }
+  const stats=[
+    ['🤿 Dives Performed',fstats.dives],
+    ['😤 Ref Arguments',fstats.args],
+    ['💃 Random Dances',fstats.dances],
+    ['🌪️ Shots into Crowd',fstats.crowdShots],
+  ];
+  h+='<div class="stats-grid">';
+  stats.forEach(([n,v])=>{
+    h+=`<div class="stat-card"><div class="stat-name">${n}</div><div class="stat-val">${t1.flag} ${v[0]} &nbsp;|&nbsp; ${v[1]} ${t2.flag}</div></div>`;
+  });
+  h+='</div>';
+  h+=`<div class="btn-row" style="justify-content:center;margin-top:8px">
+    <button class="btn btn-primary" onclick="restartGame()">🔄 PLAY AGAIN</button>
+    <button class="btn btn-secondary" onclick="goMenu()">🏠 MENU</button>
+  </div>`;
+  document.getElementById('winBox').innerHTML=h;
+}
+
+window.restartGame=function(){
+  document.getElementById('winScreen').classList.add('hidden');
+  startGame(gameMode);
+};
+window.goMenu=function(){
+  gameRunning=false;
+  document.getElementById('winScreen').classList.add('hidden');
+  document.getElementById('hud').classList.remove('visible');
+  document.getElementById('controlsTip').classList.remove('visible');
+  // Reset
+  p1Team=null;p2Team=null;selStep=0;
+  document.querySelectorAll('.team-card').forEach(c=>{c.className='team-card';});
+  document.getElementById('p1badge').textContent='P1: —'; document.getElementById('p1badge').classList.remove('selected');
+  document.getElementById('p2badge').textContent='P2: —'; document.getElementById('p2badge').classList.remove('selected');
+  document.getElementById('selTitle').textContent='🟢 Player 1 — Pick Your Nation';
+  document.getElementById('menuScreen').classList.remove('hidden');
+};
+
+/* ── MENU INTERACTIONS ── */
+document.querySelectorAll('.team-card').forEach(card=>{
+  card.addEventListener('click',()=>{
+    const team=card.dataset.team;
+    if(selStep===0){
+      p1Team=team;
+      document.querySelectorAll('.team-card').forEach(c=>c.classList.remove('p1-selected','p2-selected','both-selected'));
+      card.classList.add('p1-selected');
+      document.getElementById('p1badge').textContent=`P1: ${TEAMS[team].flag} ${TEAMS[team].name}`;
+      document.getElementById('p1badge').classList.add('selected');
+      document.getElementById('selTitle').textContent='🔵 Player 2 — Pick Your Nation';
+      selStep=1;
+    } else {
+      p2Team=team;
+      document.querySelectorAll('.team-card').forEach(c=>c.classList.remove('p2-selected','both-selected'));
+      if(card.classList.contains('p1-selected')){card.classList.add('both-selected');}
+      else card.classList.add('p2-selected');
+      document.getElementById('p2badge').textContent=`P2: ${TEAMS[team].flag} ${TEAMS[team].name}`;
+      document.getElementById('p2badge').classList.add('selected');
+      document.getElementById('selTitle').textContent='✅ Both selected — Hit Kick Off!';
+    }
+  });
+});
+
+document.getElementById('btnKickoff').addEventListener('click',()=>startGame('pvp'));
+document.getElementById('btnVsAI').addEventListener('click',()=>{
+  if(!p1Team){p1Team='argentina';}
+  if(!p2Team){p2Team=p1Team==='argentina'?'brazil':'argentina';}
+  startGame('ai');
+});
+document.getElementById('btnPenalty').addEventListener('click',()=>{
+  if(!p1Team) p1Team='argentina';
+  if(!p2Team) p2Team='brazil';
+  startGame('penalty');
+});
+
+/* ── STARS ── */
+(function spawnStars(){
+  const c=document.getElementById('starsContainer');
+  for(let i=0;i<120;i++){
+    const s=document.createElement('div');
+    s.className='star';
+    const sz=Math.random()*3+1;
+    s.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}%;top:${Math.random()*100}%;--d:${1.5+Math.random()*2.5}s;--delay:${-Math.random()*4}s;`;
+    c.appendChild(s);
+  }
+})();
+
+/* ── INITIAL DRAW ── */
+requestAnimationFrame(()=>{
+  ctx.clearRect(0,0,W,H);
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#0a1628'); g.addColorStop(1,'#162a50');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  for(let i=0;i<12;i++){ctx.fillStyle=i%2===0?'#2a6b24':'#2e7528';ctx.fillRect(i*(W/12),0,W/12,GROUND*0.4);}
+});
+
+/* ══════════════════════════════════════════════════════════
+   DUAL INPUT SYSTEM  — keyboard + mouse + touch
+   All three feed into the same keys{} object so the game
+   loop's handleInput() works without any changes.
+══════════════════════════════════════════════════════════ */
+(function() {
+
+  /* Map button-element id → key code */
+  const KEY_MAP = {
+    b1L:'KeyA',  b1R:'KeyD',  b1U:'KeyW',  b1S:'KeyF',  b1P:'KeyG',
+    b2L:'ArrowLeft', b2R:'ArrowRight', b2U:'ArrowUp', b2S:'KeyK', b2P:'KeyL',
+  };
+
+  /* One-shot keys that must not stay held (power buttons) */
+  const ONE_SHOT = new Set(['KeyG','KeyL']);
+
+  const gc   = document.getElementById('gameControls');
+  const padP2 = document.getElementById('padP2');
+
+  /* ── Track active presses ── */
+  // touchId → btnId  (multi-touch routing)
+  const touchActive = {};
+  // btnId → press count  (mouse can only have one at a time per button)
+  const mouseActive = {};
+
+  function activate(btnId) {
+    const code = KEY_MAP[btnId];
+    if (!code) return;
+    keys[code] = true;
+    document.getElementById(btnId)?.classList.add('active');
+  }
+
+  function deactivate(btnId) {
+    const code = KEY_MAP[btnId];
+    if (!code) return;
+    // Clear unless another input source is still holding it
+    const touchHolding  = Object.values(touchActive).includes(btnId);
+    const mouseHolding  = (mouseActive[btnId] || 0) > 0;
+    if (!touchHolding && !mouseHolding) {
+      keys[code] = false;
+      document.getElementById(btnId)?.classList.remove('active');
+    }
+  }
+
+  /* ── Hit-test: which button is under this point? ── */
+  function btnAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    let cur = el;
+    for (let i = 0; i < 4; i++) {
+      if (cur && KEY_MAP[cur.id]) return cur.id;
+      cur = cur?.parentElement;
+    }
+    return null;
+  }
+
+  /* ════════ TOUCH EVENTS ════════ */
+  gc.addEventListener('touchstart', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      const id = btnAt(t.clientX, t.clientY);
+      if (!id) continue;
+      touchActive[t.identifier] = id;
+      activate(id);
+      // One-shot: schedule release after one frame
+      if (ONE_SHOT.has(KEY_MAP[id])) {
+        setTimeout(() => {
+          delete touchActive[t.identifier];
+          deactivate(id);
+        }, 80);
+      }
+    }
+  }, { passive: false });
+
+  gc.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      const newId = btnAt(t.clientX, t.clientY);
+      const oldId = touchActive[t.identifier];
+      if (newId === oldId) continue;
+      if (oldId) { delete touchActive[t.identifier]; deactivate(oldId); }
+      if (newId) { touchActive[t.identifier] = newId; activate(newId); }
+    }
+  }, { passive: false });
+
+  function clearTouch(e) {
+    e.preventDefault?.();
+    for (const t of e.changedTouches) {
+      const id = touchActive[t.identifier];
+      if (!id) continue;
+      delete touchActive[t.identifier];
+      deactivate(id);
+    }
+  }
+  gc.addEventListener('touchend',    clearTouch, { passive: false });
+  gc.addEventListener('touchcancel', clearTouch, { passive: false });
+
+  /* ════════ MOUSE EVENTS (so buttons work on PC too) ════════ */
+  // Track which btn the mouse is currently holding
+  let mouseDragging = null;
+
+  gc.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const id = btnAt(e.clientX, e.clientY);
+    if (!id) return;
+    mouseDragging = id;
+    mouseActive[id] = (mouseActive[id] || 0) + 1;
+    activate(id);
+    if (ONE_SHOT.has(KEY_MAP[id])) {
+      setTimeout(() => {
+        mouseActive[id] = Math.max(0, (mouseActive[id] || 1) - 1);
+        deactivate(id);
+        mouseDragging = null;
+      }, 80);
+    }
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (!mouseDragging) return;
+    const newId = btnAt(e.clientX, e.clientY);
+    if (newId === mouseDragging) return;
+    // Left old button
+    mouseActive[mouseDragging] = Math.max(0, (mouseActive[mouseDragging] || 1) - 1);
+    deactivate(mouseDragging);
+    mouseDragging = newId;
+    if (newId) {
+      mouseActive[newId] = (mouseActive[newId] || 0) + 1;
+      activate(newId);
+    }
+  });
+
+  window.addEventListener('mouseup', e => {
+    if (e.button !== 0 || !mouseDragging) return;
+    mouseActive[mouseDragging] = Math.max(0, (mouseActive[mouseDragging] || 1) - 1);
+    deactivate(mouseDragging);
+    mouseDragging = null;
+  });
+
+  /* ════════ SHOW / HIDE WITH GAME ════════ */
+  function showControls(mode) {
+    gc.classList.add('visible');
+    // Show P2 pad only in pvp or online modes (both players on one screen or online)
+    padP2.style.display = (mode === 'pvp' || mode === 'online_host' || mode === 'online_guest') ? '' : 'none';
+    // For online_guest: rename P2 pad label to "YOU" since guest controls P1 physically
+    if(mode === 'online_guest') {
+      const padTag = document.querySelector('#padP1 .pad-tag');
+      if(padTag) padTag.textContent = 'YOU · WASD/Touch';
+    }
+  }
+  function hideControls() {
+    gc.classList.remove('visible');
+    // Release all held buttons
+    Object.values(touchActive).forEach(deactivate);
+    Object.keys(touchActive).forEach(k => delete touchActive[k]);
+    Object.keys(mouseActive).forEach(k => { mouseActive[k]=0; });
+    mouseDragging = null;
+  }
+
+  /* Hook start buttons */
+  ['btnKickoff','btnVsAI','btnPenalty'].forEach(bid => {
+    document.getElementById(bid)?.addEventListener('click', () => {
+      setTimeout(() => showControls(gameMode), 60);
+    });
+  });
+
+  /* Hook Play Again (dynamic button) */
+  document.addEventListener('click', e => {
+    if (e.target?.closest?.('[onclick="restartGame()"]')) {
+      setTimeout(() => showControls(gameMode), 60);
+    }
+  });
+
+  /* Hook Menu button */
+  const _goMenu = window.goMenu;
+  window.goMenu = function() { hideControls(); _goMenu?.(); };
+
+  /* Observe win screen to hide controls */
+  new MutationObserver(() => {
+    if (!document.getElementById('winScreen')?.classList.contains('hidden')) {
+      hideControls();
+    }
+  }).observe(document.getElementById('winScreen'), { attributes: true, attributeFilter: ['class'] });
+
+})();
+
+})();
+</script>
+
+<script>
+/* ══════════════════════════════════════════════════════════
+   SCREEN ORIENTATION LOCK — force landscape on mobile
+══════════════════════════════════════════════════════════ */
+(function() {
+  const overlay = document.getElementById('rotateOverlay');
+  const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  function checkOrientation() {
+    if (!isMobile) return;
+    const isPortrait = window.innerHeight > window.innerWidth;
+    overlay.classList.toggle('show', isPortrait);
+  }
+
+  // Try to lock orientation via Screen Orientation API
+  function lockLandscape() {
+    if (!isMobile) return;
+    const so = screen.orientation || screen.msOrientation;
+    if (so && so.lock) {
+      so.lock('landscape').catch(() => {});
+    } else if (screen.lockOrientation) {
+      screen.lockOrientation('landscape');
+    }
+  }
+
+  window.addEventListener('resize', checkOrientation);
+  window.addEventListener('orientationchange', () => {
+    setTimeout(checkOrientation, 200);
+  });
+
+  // Lock on first user interaction (required by browsers)
+  document.addEventListener('click', lockLandscape, { once: true });
+  document.addEventListener('touchstart', lockLandscape, { once: true });
+
+  checkOrientation();
+})();
+
+/* ══════════════════════════════════════════════════════════
+   ONLINE MULTIPLAYER SYSTEM
+   Uses BroadcastChannel API for same-browser multiplayer
+   (works across tabs/windows on the same device/browser)
+   With a room-code system to pair players.
+══════════════════════════════════════════════════════════ */
+(function() {
+
+  /* ── State ── */
+  let onlineRole = null;       // 'host' | 'guest'
+  let roomCode   = null;
+  let channel    = null;       // BroadcastChannel
+  let lobbyChannel = null;     // for room discovery
+  let guestConnected = false;
+  let onlineActive   = false;
+  let myTeamKey      = null;
+  let opponentTeamKey = null;
+  let currentTab     = 'host';
+
+  /* ── Generate random 4-letter room code ── */
+  function genCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let c = '';
+    for (let i = 0; i < 4; i++) c += chars[Math.floor(Math.random() * chars.length)];
+    return c;
+  }
+
+  /* ── Open modal & generate code ── */
+  window.openOnlineModal = function() {
+    // Auto-generate a code for host tab
+    roomCode = genCode();
+    document.getElementById('roomCodeDisplay').textContent = roomCode;
+    document.getElementById('onlineModal').classList.add('show');
+    document.getElementById('hostStatus').textContent = '⏳ Waiting for opponent to join…';
+    document.getElementById('hostStatus').className = 'online-status waiting';
+    document.getElementById('btnStartOnline').disabled = true;
+    document.getElementById('btnStartOnline').style.opacity = '0.4';
+    document.getElementById('slotGuest').classList.remove('filled');
+    document.getElementById('guestStatusLabel').textContent = 'Waiting to join…';
+
+    // Open lobby listener channel for this code
+    openLobbyChannel(roomCode);
+  };
+
+  window.closeOnlineModal = function() {
+    document.getElementById('onlineModal').classList.remove('show');
+    if (lobbyChannel) { lobbyChannel.close(); lobbyChannel = null; }
+    if (channel) { channel.close(); channel = null; }
+    guestConnected = false;
+    onlineRole = null;
+    onlineActive = false;
+  };
+
+  window.switchTab = function(tab) {
+    currentTab = tab;
+    document.getElementById('tabHost').classList.toggle('active', tab === 'host');
+    document.getElementById('tabJoin').classList.toggle('active', tab === 'join');
+    document.getElementById('panelHost').classList.toggle('active', tab === 'host');
+    document.getElementById('panelJoin').classList.toggle('active', tab === 'join');
+    // Reset join status
+    if (tab === 'join') {
+      document.getElementById('joinStatus').textContent = '';
+      document.getElementById('joinStatus').className = 'online-status';
+    }
+  };
+
+  /* ── Copy room code ── */
+  document.getElementById('roomCodeDisplay').addEventListener('click', () => {
+    const code = document.getElementById('roomCodeDisplay').textContent;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(code).then(() => {
+        const el = document.getElementById('roomCodeDisplay');
+        el.textContent = '✓ COPIED!';
+        setTimeout(() => el.textContent = code, 1500);
+      });
+    }
+  });
+
+  /* ── Input uppercase ── */
+  document.getElementById('joinCodeInput').addEventListener('input', e => {
+    e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g,'');
+  });
+
+  /* ── Lobby channel: host opens, guest sends join request ── */
+  function openLobbyChannel(code) {
+    if (lobbyChannel) lobbyChannel.close();
+    lobbyChannel = new BroadcastChannel('wcmania_lobby_' + code);
+    onlineRole = 'host';
+
+    lobbyChannel.onmessage = (ev) => {
+      const msg = ev.data;
+      if (msg.type === 'guest_hello') {
+        // Guest wants to join
+        guestConnected = true;
+        opponentTeamKey = msg.team || null;
+
+        document.getElementById('slotGuest').classList.add('filled');
+        document.getElementById('guestStatusLabel').textContent = msg.team
+          ? `${TEAMS[msg.team]?.flag || '🏳️'} ${TEAMS[msg.team]?.name || msg.team}`
+          : 'Connected!';
+        document.getElementById('hostStatus').textContent = '✅ Opponent connected! Select your teams and start!';
+        document.getElementById('hostStatus').className = 'online-status connected';
+
+        // Enable start button if host also has a team
+        updateStartButton();
+
+        // Ack the guest
+        lobbyChannel.postMessage({ type: 'host_ack', hostTeam: myTeamKey });
+      }
+      if (msg.type === 'guest_team') {
+        opponentTeamKey = msg.team;
+        document.getElementById('guestStatusLabel').textContent =
+          `${TEAMS[msg.team]?.flag || ''} ${TEAMS[msg.team]?.name || msg.team}`;
+        updateStartButton();
+      }
+    };
+  }
+
+  function updateStartButton() {
+    const ready = guestConnected;
+    document.getElementById('btnStartOnline').disabled = !ready;
+    document.getElementById('btnStartOnline').style.opacity = ready ? '1' : '0.4';
+  }
+
+  /* ── Join a room ── */
+  window.joinRoom = function() {
+    const code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
+    if (code.length !== 4) {
+      setJoinStatus('⚠️ Enter a 4-letter code!', 'error');
+      return;
+    }
+    setJoinStatus('🔍 Looking for host…', 'waiting');
+
+    // Try joining via lobby channel
+    const lc = new BroadcastChannel('wcmania_lobby_' + code);
+    lobbyChannel = lc;
+    roomCode = code;
+    onlineRole = 'guest';
+
+    let ackReceived = false;
+    lc.onmessage = (ev) => {
+      const msg = ev.data;
+      if (msg.type === 'host_ack') {
+        ackReceived = true;
+        opponentTeamKey = msg.hostTeam || null;
+        setJoinStatus('✅ Host found! Waiting for match to start…', 'connected');
+        document.getElementById('btnJoinRoom').disabled = true;
+        document.getElementById('btnJoinRoom').style.opacity = '0.4';
+      }
+      if (msg.type === 'match_start') {
+        // Host started the match
+        opponentTeamKey = msg.p1Team;
+        myTeamKey = msg.p2Team;
+        // Set teams and start online game as guest
+        p1Team = msg.p1Team;
+        p2Team = msg.p2Team;
+        closeOnlineModalSilent();
+        openGameChannel(code);
+        startGame('online_guest');
+      }
+    };
+
+    // Send hello
+    lc.postMessage({ type: 'guest_hello', team: myTeamKey });
+
+    // Timeout if no ack
+    setTimeout(() => {
+      if (!ackReceived) {
+        setJoinStatus('❌ No host found with code "' + code + '". Check the code and try again.', 'error');
+        lc.close(); lobbyChannel = null; onlineRole = null;
+        document.getElementById('btnJoinRoom').disabled = false;
+        document.getElementById('btnJoinRoom').style.opacity = '1';
+      }
+    }, 4000);
+  };
+
+  function setJoinStatus(msg, cls) {
+    const el = document.getElementById('joinStatus');
+    el.textContent = msg;
+    el.className = 'online-status ' + (cls || '');
+  }
+
+  /* ── Hook team selection to broadcast to lobby (for online) ── */
+  document.querySelectorAll('.team-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const team = card.dataset.team;
+      // Track selection for online mode
+      if (onlineRole === 'host') {
+        if (selStep === 0 || selStep === 1) myTeamKey = team;
+        if (lobbyChannel && guestConnected) {
+          lobbyChannel.postMessage({ type: 'host_team', team: myTeamKey });
+        }
+        updateStartButton();
+      } else if (onlineRole === 'guest') {
+        myTeamKey = team;
+        if (lobbyChannel) {
+          lobbyChannel.postMessage({ type: 'guest_team', team: myTeamKey });
+        }
+      }
+    });
+  });
+
+  /* ── Start online game as host ── */
+  document.getElementById('btnStartOnline').addEventListener('click', () => {
+    if (!guestConnected) return;
+    // Host picks p1, guest picks p2
+    // If teams aren't fully set yet, auto-assign
+    if (!p1Team) p1Team = myTeamKey || 'argentina';
+    if (!p2Team) p2Team = opponentTeamKey || 'brazil';
+
+    // Notify guest
+    if (lobbyChannel) {
+      lobbyChannel.postMessage({
+        type: 'match_start',
+        p1Team: p1Team,
+        p2Team: p2Team,
+      });
+    }
+    closeOnlineModalSilent();
+    openGameChannel(roomCode);
+    startGame('online_host');
+  });
+
+  /* ── Open game channel for input sync ── */
+  function openGameChannel(code) {
+    if (channel) channel.close();
+    channel = new BroadcastChannel('wcmania_game_' + code);
+    onlineActive = true;
+    setupGameChannelListener();
+  }
+
+  /* ── Game channel: sync remote player inputs ── */
+  // We replicate the remote player's keys into the keys{} object
+  const remoteKeys = {};
+
+  function setupGameChannelListener() {
+    if (!channel) return;
+    channel.onmessage = (ev) => {
+      const msg = ev.data;
+      if (msg.type === 'input') {
+        // Apply remote keys — mapped to local slots
+        const isHost = onlineRole === 'host';
+        // Host controls p1 (WASD), guest controls p2 (arrows)
+        // Remap guest's p1 keys → p2 keys for host's game
+        if (isHost) {
+          // guest sends their local p1 keys → we treat as p2
+          keys['ArrowLeft']  = msg.keys['KeyA']  || false;
+          keys['ArrowRight'] = msg.keys['KeyD']  || false;
+          keys['ArrowUp']    = msg.keys['KeyW']  || false;
+          keys['ArrowDown']  = msg.keys['KeyS']  || false;
+          keys['KeyK']       = msg.keys['KeyF']  || false;
+          keys['KeyL']       = msg.keys['KeyG']  || false;
+        } else {
+          // host sends their p1 keys → we treat as p1 (mirror)
+          keys['KeyA'] = msg.keys['KeyA']  || false;
+          keys['KeyD'] = msg.keys['KeyD']  || false;
+          keys['KeyW'] = msg.keys['KeyW']  || false;
+          keys['KeyS'] = msg.keys['KeyS']  || false;
+          keys['KeyF'] = msg.keys['KeyF']  || false;
+          keys['KeyG'] = msg.keys['KeyG']  || false;
+        }
+      }
+      if (msg.type === 'state_sync' && onlineRole === 'guest') {
+        // Guest: receive authoritative game state from host
+        if (!gs || !gameRunning) return;
+        // Sync ball & players from host
+        const s = msg.state;
+        gs.ball.x = s.bx; gs.ball.y = s.by;
+        gs.ball.vx = s.bvx; gs.ball.vy = s.bvy;
+        gs.ball.rotAngle = s.brot; gs.ball.spin = s.bspin;
+        gs.p1.x = s.p1x; gs.p1.y = s.p1y; gs.p1.vx = s.p1vx; gs.p1.vy = s.p1vy;
+        gs.p2.x = s.p2x; gs.p2.y = s.p2y; gs.p2.vx = s.p2vx; gs.p2.vy = s.p2vy;
+        gs.score[0] = s.sc0; gs.score[1] = s.sc1;
+        gs.timeLeft = s.t;
+        gs.powerCD1 = s.pcd1; gs.powerCD2 = s.pcd2;
+        gs.p1.frozen = s.p1fr; gs.p2.frozen = s.p2fr;
+        gs.p1.facing = s.p1f; gs.p2.facing = s.p2f;
+      }
+      if (msg.type === 'game_over' && onlineRole === 'guest') {
+        endGame();
+      }
+      if (msg.type === 'goal' && onlineRole === 'guest') {
+        // Guest sees goal effects
+        if (gs) burst(gs, W/2, H/2,
+          msg.scorer === 1
+            ? [TEAMS[p1Team].jerseyCol, TEAMS[p1Team].jerseyAlt, '#FFD700']
+            : [TEAMS[p2Team].jerseyCol, TEAMS[p2Team].jerseyAlt, '#FFD700'],
+          80);
+      }
+    };
+  }
+
+  /* ── Broadcast local input to remote (runs in game loop) ── */
+  let lastInputSend = 0;
+  const INPUT_INTERVAL = 1000 / 30; // 30hz
+
+  window._onlineTick = function(ts) {
+    if (!onlineActive || !channel) return;
+
+    // Send input at 30hz
+    if (ts - lastInputSend > INPUT_INTERVAL) {
+      lastInputSend = ts;
+      // Always send p1 keys (both host and guest use p1 controls locally)
+      channel.postMessage({
+        type: 'input',
+        keys: {
+          KeyA: keys['KeyA'] || false,
+          KeyD: keys['KeyD'] || false,
+          KeyW: keys['KeyW'] || false,
+          KeyS: keys['KeyS'] || false,
+          KeyF: keys['KeyF'] || false,
+          KeyG: keys['KeyG'] || false,
+        }
+      });
+    }
+
+    // Host sends authoritative state at 60hz
+    if (onlineRole === 'host' && gs && gameRunning) {
+      channel.postMessage({
+        type: 'state_sync',
+        state: {
+          bx: gs.ball.x,   by: gs.ball.y,
+          bvx: gs.ball.vx, bvy: gs.ball.vy,
+          brot: gs.ball.rotAngle, bspin: gs.ball.spin,
+          p1x: gs.p1.x, p1y: gs.p1.y, p1vx: gs.p1.vx, p1vy: gs.p1.vy,
+          p2x: gs.p2.x, p2y: gs.p2.y, p2vx: gs.p2.vx, p2vy: gs.p2.vy,
+          sc0: gs.score[0], sc1: gs.score[1], t: gs.timeLeft,
+          pcd1: gs.powerCD1, pcd2: gs.powerCD2,
+          p1fr: gs.p1.frozen, p2fr: gs.p2.frozen,
+          p1f: gs.p1.facing, p2f: gs.p2.facing,
+        }
+      });
+    }
+  };
+
+  /* ── Notify guest of game events ── */
+  const _origRegisterGoal = window._registerGoalOnline = function(scorer) {
+    if (onlineRole === 'host' && channel) {
+      channel.postMessage({ type: 'goal', scorer });
+    }
+  };
+
+  /* ── Hook endGame for online ── */
+  const _origGoMenu = window.goMenu;
+  window.goMenu = function() {
+    if (channel) { channel.close(); channel = null; }
+    if (lobbyChannel) { lobbyChannel.close(); lobbyChannel = null; }
+    onlineActive = false; onlineRole = null; guestConnected = false;
+    document.getElementById('onlineBadge').style.display = 'none';
+    _origGoMenu?.();
+  };
+
+  function closeOnlineModalSilent() {
+    document.getElementById('onlineModal').classList.remove('show');
+  }
+
+  /* ── Online mode: guest uses p1 controls for their character ── */
+  // We reassign: online_guest mode — guest plays as P2 visually but
+  // uses P1 keys (WASD) on their own screen, host syncs their input to P2 slot
+  window._isOnlineGuest = () => onlineRole === 'guest' && onlineActive;
+  window._isOnlineHost  = () => onlineRole === 'host'  && onlineActive;
+
+  /* ── Wire up the Online button ── */
+  document.getElementById('btnOnline').addEventListener('click', () => {
+    openOnlineModal();
+  });
+
+  /* ── Expose for gameLoop ── */
+  window._onlineRole = () => onlineRole;
+  window._onlineActive = () => onlineActive;
+  window._notifyOnlineGoal = _origRegisterGoal;
+  window._getOnlineChannel = () => channel;
+
+  /* ── Hook online start for controls ── */
+  document.addEventListener('_onlineGameStart', () => {
+    setTimeout(() => {
+      if(window.showOnlineControls) window.showOnlineControls(gameMode);
+    }, 60);
+  });
+
+})();
+
+</script>
+</body>
+</html>
