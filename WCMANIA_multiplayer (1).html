@@ -6,7 +6,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="screen-orientation" content="landscape">
-<title>⚽ World Cup Chaos </title>
+<title>⚽ World Cup Chaos</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@700;900&display=swap');
 
@@ -416,18 +416,24 @@
     background: rgba(0,0,0,0.9);
     backdrop-filter: blur(10px);
     flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 16px;
-    padding: 20px;
+    align-items: center; justify-content: flex-start;
+    gap: 0;
+    padding: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
   #onlineModal.show { display: flex; }
   .modal-box {
     background: radial-gradient(ellipse at 30% 20%, #1a0050 0%, #0d0820 70%);
     border: 2px solid rgba(255,215,0,0.3);
     border-radius: 24px;
-    padding: 32px 28px;
-    max-width: 480px; width: 100%;
+    padding: 28px 24px;
+    max-width: 480px; width: calc(100% - 32px);
+    margin: 16px auto 24px;
     text-align: center;
+    touch-action: pan-y;
   }
   .modal-title {
     font-family: 'Bangers', cursive;
@@ -512,6 +518,7 @@
     line-height: 1.2;
     transition: all 0.15s;
     user-select: none;
+    touch-action: manipulation;
   }
   .online-team-btn span { font-family: 'Bangers', cursive; font-size: 0.75rem; color: #aaa; letter-spacing: 1px; }
   .online-team-btn:hover { border-color: var(--gold); transform: scale(1.06); }
@@ -533,8 +540,12 @@
      DUAL CONTROLS  (touch + mouse + keyboard)
   ══════════════════════════════════════════ */
 
-  /* Prevent text selection & callout on long-press */
-  #gameControls * {
+  /* Prevent text selection & callout on long-press — ONLY inside game controls */
+  #gameControls .dp,
+  #gameControls .ab,
+  #gameControls .dpad,
+  #gameControls .ctrl-pad,
+  #gameControls .act-col {
     -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none;
     touch-action: none;
@@ -673,8 +684,14 @@
     .controls-hint     { font-size: 0.6rem; }
 
     /* Online modal scrollable on small screens */
-    #onlineModal       { align-items: flex-start; padding-top: 12px; overflow-y: auto; }
-    .modal-box         { padding: 20px 16px; }
+    #onlineModal       { padding: 0; }
+    .modal-box         { padding: 16px 14px; margin: 12px auto 20px; }
+    .modal-title       { font-size: 1.5rem; }
+    .room-code-display { font-size: 2.2rem; letter-spacing: 6px; padding: 10px 16px; }
+    .tab-btn           { font-size: 0.9rem; padding: 9px; }
+    .btn               { font-size: 0.9rem; padding: 10px 18px; touch-action: manipulation; }
+    .btn-sm            { font-size: 0.78rem; padding: 8px 14px; }
+    .online-team-btn   { font-size: 1.2rem; padding: 6px 3px; }
   }
 
   /* Very small phones (iPhone SE etc) */
@@ -1816,10 +1833,11 @@ requestAnimationFrame(()=>{
 
   /* ════════ TOUCH EVENTS ════════ */
   gc.addEventListener('touchstart', e => {
-    e.preventDefault();
+    let anyBtn = false;
     for (const t of e.changedTouches) {
       const id = btnAt(t.clientX, t.clientY);
       if (!id) continue;
+      anyBtn = true;
       touchActive[t.identifier] = id;
       activate(id);
       // One-shot: schedule release after one frame
@@ -1830,17 +1848,21 @@ requestAnimationFrame(()=>{
         }, 80);
       }
     }
+    if (anyBtn) e.preventDefault();
   }, { passive: false });
 
   gc.addEventListener('touchmove', e => {
-    e.preventDefault();
+    // Only block scroll when touch is on an actual game button
+    let hitBtn = false;
     for (const t of e.changedTouches) {
       const newId = btnAt(t.clientX, t.clientY);
       const oldId = touchActive[t.identifier];
+      if (newId || oldId) hitBtn = true;
       if (newId === oldId) continue;
       if (oldId) { delete touchActive[t.identifier]; deactivate(oldId); }
       if (newId) { touchActive[t.identifier] = newId; activate(newId); }
     }
+    if (hitBtn) e.preventDefault();
   }, { passive: false });
 
   function clearTouch(e) {
@@ -2016,6 +2038,8 @@ requestAnimationFrame(()=>{
   /* ════════ MODAL UI ════════ */
   window.openOnlineModal = function() {
     document.getElementById('onlineModal').classList.add('show');
+    // Disable game controls layer so touches reach the modal unobstructed
+    document.getElementById('gameControls').style.pointerEvents = 'none';
     document.getElementById('roomCodeDisplay').textContent = '····';
     setStatus('hostStatus','⏳ Opening connection… Pick your team while waiting!','waiting');
     document.getElementById('btnStartOnline').disabled = true;
@@ -2033,6 +2057,8 @@ requestAnimationFrame(()=>{
 
   window.closeOnlineModal = function() {
     document.getElementById('onlineModal').classList.remove('show');
+    // Re-enable game controls layer
+    document.getElementById('gameControls').style.pointerEvents = '';
     destroyPeer();
   };
 
